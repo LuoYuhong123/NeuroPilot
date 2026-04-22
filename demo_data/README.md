@@ -25,6 +25,9 @@ The larger example movies are intended to be distributed as GitHub Release asset
 - `raw_CA1/raw_CA1.tif`
 - `raw_LEC/raw_LEC.tif`
 
+GitHub Releases page:
+- `https://github.com/LuoYuhong123/NeuroPilot/releases`
+
 The root `.gitignore` excludes those larger TIFFs so they stay local unless you upload them separately as release assets.
 
 After downloading the release assets, place them back into the folder layout shown above.

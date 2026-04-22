@@ -209,6 +209,9 @@ The larger example movies should be uploaded as GitHub Release assets instead of
 - `raw_CA1.tif`
 - `raw_LEC.tif`
 
+GitHub Releases page:
+- `https://github.com/LuoYuhong123/NeuroPilot/releases`
+
 After downloading those release assets, place them into the same dataset-subfolder layout used by the pipeline, for example:
 
 ```text

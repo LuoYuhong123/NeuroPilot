@@ -38,6 +38,9 @@ python neuropilot_pipeline.py \
 
 The larger example movies are intended to be distributed as GitHub Release assets rather than committed into the repository history.
 
+Release downloads:
+- `https://github.com/LuoYuhong123/NeuroPilot/releases`
+
 ## Cell-Data Run
 
 Run the main command from the `neumar` environment. If your downstream segmentation environment keeps the default name `suite2p`, you can omit `--downstream-env`.
