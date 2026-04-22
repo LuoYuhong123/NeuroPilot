@@ -1,0 +1,60 @@
+{
+  "GPU": 3,
+  "attention_type": "swin",
+  "attn_splits_list": [
+    2,
+    2
+  ],
+  "b1": 0.5,
+  "b2": 0.999,
+  "batch_size": 1,
+  "block_dims": [
+    64,
+    128,
+    256
+  ],
+  "corr_radius_list": [
+    -1,
+    -1
+  ],
+  "datasets_folder": "neuron",
+  "datasets_path": "..//datasets",
+  "dim": 64,
+  "epoch": 100,
+  "feature_channels": 128,
+  "ffn_dim_expansion": 4,
+  "gamma": 0.85,
+  "get_k_lr": 0.0002,
+  "img_net_type": "ResUNet",
+  "img_size": 192,
+  "in_channels": 1,
+  "initial_dim": 64,
+  "input_nc": 1,
+  "iters": 4,
+  "local_rank": 0,
+  "lr": 0.0002,
+  "model_path": "./0_train_model",
+  "normalize_factor": 1,
+  "num_blocks": 2,
+  "num_head": 1,
+  "num_scales": 2,
+  "num_transformer_layers": 6,
+  "out_channels": 1,
+  "pretrain": "decoder_os8",
+  "prop_radius_list": [
+    -1,
+    -1
+  ],
+  "radius": 4,
+  "results_path": "./0_train_results",
+  "save_iteration": 100,
+  "train_datasets_size": 5000,
+  "train_folder": "GT",
+  "update_type": "conv",
+  "upsample_factor": 8,
+  "upsample_mode": "convex_refine",
+  "use_feature_num": 5,
+  "use_var": true,
+  "var_max": 10,
+  "var_min": 0
+}

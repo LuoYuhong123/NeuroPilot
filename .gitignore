@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments and local config
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+.python-version
+
+# Local run inputs and outputs
+input_data/
+runs/
+tmp_pipeline_metrics/
+roi_selection_outputs/
+logs/
+
+# Large demo movies are distributed as GitHub Release assets, not tracked in git.
+demo_data/raw_CA1/raw_CA1.tif
+demo_data/raw_LEC/raw_LEC.tif
+
+# Models and heavy artifacts
+*.pth
+*.pt
+*.ckpt
+*.onnx
+!PyLoReg/PyLoReg_model/GM3_fn5_202511301551/gmflow_latest.pt
+!PyLoReg/PyLoReg_model/GM3_fn5_202511301551/config.json
+!PyLoReg/PyLoReg_model/GM3_fn5_202511301551/params_log.txt
+
+# Generated reports and experiment assets
+docs/*.pdf
+*.log
+
+# Local-only scratch files
+API_key_test_1.txt
+tmp_write_test.txt
+tmp_step1_compile.pyc.*
+
+# IDE / OS metadata
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

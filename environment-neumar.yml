@@ -1,0 +1,32 @@
+name: neumar
+channels:
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
+  - nodefaults
+variables:
+  # Primarily needed on Windows. Harmless on Linux and keeps the environment
+  # definition identical across platforms.
+  KMP_DUPLICATE_LIB_OK: "TRUE"
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - scipy
+  - matplotlib
+  - tifffile
+  - scikit-image
+  - pyyaml
+  - pillow
+  - opencv
+  - h5py
+  - joblib
+  - numba
+  - llvm-openmp
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu121
+      - torch==2.5.1+cu121
+      - csbdeep
+      - gdown
+      - tqdm
+      - tqdm-joblib
