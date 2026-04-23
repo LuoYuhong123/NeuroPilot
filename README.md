@@ -38,10 +38,13 @@ python neuropilot_pipeline.py --input-dir /path/to/datasets --output-dir /path/t
 
 Important input-layout rule:
 - `--input-dir` should contain multiple child folders
-- each child folder should contain exactly one `.tif` or `.tiff` file
+- each child folder may contain one or more `.tif` or `.tiff` files
+- TIFF files within the same child folder should be as similar as possible in modality/type, acquisition settings, and noise profile
+- the pipeline deterministically selects a subset of TIFF files in each child folder as the shared denoise training set
+- after shared denoise training, each TIFF in that child folder continues through denoising, registration, final-stack materialization, downstream analysis, and report generation as its own per-stack run
 - if `--subfolders` is omitted, the pipeline scans and processes all first-level child folders
 - if `--subfolders` is provided, only the named child folders are processed
-- results are grouped under `--output-dir/<child_folder_name>/`, so each dataset keeps its own manifests, iterations, final outputs, and report
+- results are grouped under `--output-dir/<child_folder_name>/`, with `_shared/` training artifacts plus one per-TIFF run folder
 
 Supported `--subfolders` forms:
 
@@ -61,7 +64,7 @@ The pipeline does not expect all TIFF files to be placed directly under `--input
 python prepare_input_tiffs.py --input-dir /path/to/flat_tif_folder
 ```
 
-That helper script checks TIFF layout, rewrites non-page-stack TIFFs when needed, and places each TIFF into its own same-name subfolder before the main pipeline is launched.
+That helper script checks TIFF layout, rewrites non-page-stack TIFFs when needed, and places each TIFF into its own same-name subfolder as a safe default before the main pipeline is launched. You may later regroup similar TIFFs into the same child folder when you want them to share denoise training.
 
 ## Environments
 
@@ -183,10 +186,13 @@ Expected input layout:
 ```text
 /path/to/datasets/
   sample_a/
-    sample_a.tif
+    sample_a_fov01.tif
+    sample_a_fov02.tif
   sample_b/
     sample_b.tif
 ```
+
+By default, the pipeline trains one shared denoise model per child folder using a deterministic subset of its TIFF files, then processes each TIFF separately. The default subset cap is `4` files per child folder; set `NEUROPILOT_TRAIN_MAX_TIFS=0` to use all TIFF files in that child folder for denoise training.
 
 ## Demo Data
 
@@ -229,13 +235,16 @@ See `demo_data/README.md` for the quick-demo and release-asset convention.
 ## Configuration Notes
 
 The main entry accepts these user-facing parameters:
-- `--input-dir`: root folder containing one child folder per dataset
+- `--input-dir`: root folder containing one child folder per dataset; each child folder may contain one or more TIFF files
 - `--output-dir`: root folder where dataset-specific result folders will be written
 - `--subfolders`: optional dataset subset, written as `sample_a,sample_b` or `['sample_a','sample_b']`
 - `--llm-mode`: `off`, `shadow`, or `apply`
 - `--cell-data` / `--non-cell-data`: whether to enable downstream cell-style analysis
 - `--GPU`: GPU index or comma-separated GPU indices, for example `0` or `0,1`
 - `--downstream-env`: optional downstream conda environment name for cell-data runs; default is `suite2p`
+
+Useful environment override:
+- `NEUROPILOT_TRAIN_MAX_TIFS`: maximum number of TIFF files per input child folder used for shared denoise training; default `4`, set to `0` to use all TIFF files
 
 ## Weights
 
@@ -246,18 +255,20 @@ DeepCAD denoising pretrained weights are intentionally not distributed here, bec
 
 ## Outputs
 
-Key outputs are written per dataset under `--output-dir/<child_folder_name>/`:
-- `manifests/pipeline_manifest.json`
-- `final_used_params.json`
-- `iterations/iter_*/metrics/`
-- `iterations/iter_*/llm/`
-- `final/final_stack.tif`
-- `final/final_stack_sidecar.json`
-- `segmentation/` for cell-data runs
-- `report/report.html`
-- `report/report_print.html`
-- `report/report_data.json`
-- `report/report_manifest.json`
+Key outputs are grouped per dataset under `--output-dir/<child_folder_name>/`:
+- `_shared/pth_deepcad/`, `_shared/train_inputs/`, and `_shared/iterations/` for child-folder-level shared denoise-training artifacts
+- one per-TIFF run folder, typically named after the TIFF stem
+- `<stack_tag>/manifests/pipeline_manifest.json`
+- `<stack_tag>/final_used_params.json`
+- `<stack_tag>/iterations/iter_*/metrics/`
+- `<stack_tag>/iterations/iter_*/llm/`
+- `<stack_tag>/final/final_stack.tif`
+- `<stack_tag>/final/final_stack_sidecar.json`
+- `<stack_tag>/segmentation/` for cell-data runs
+- `<stack_tag>/report/report.html`
+- `<stack_tag>/report/report_print.html`
+- `<stack_tag>/report/report_data.json`
+- `<stack_tag>/report/report_manifest.json`
 
 See `docs/OUTPUTS.md` for a fuller directory walkthrough.
 

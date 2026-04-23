@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import hashlib
+import shutil
 import time
 from pathlib import Path
 import tifffile as tiff
@@ -111,6 +112,16 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         return float(default)
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return int(default)
+    try:
+        return int(value)
+    except ValueError:
+        return int(default)
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -220,13 +231,13 @@ def parse_cli_args() -> argparse.Namespace:
         "--input-dir",
         dest="input_dir",
         default=None,
-        help="Root directory containing dataset subfolders.",
+        help="Root directory containing dataset subfolders. Each child folder may contain one or more tif/tiff files.",
     )
     parser.add_argument(
         "--output-dir",
         dest="output_dir",
         default=None,
-        help="Root directory where one result subfolder will be created per dataset child folder.",
+        help="Root directory where one result subfolder will be created per dataset child folder, with shared and per-stack outputs inside.",
     )
     parser.add_argument(
         "--subfolders",
@@ -300,6 +311,7 @@ TRAIN_BATCH_SIZE_BOUNDS = (1, 16)
 TRAIN_DATASETS_SIZE = 1000
 SELECT_IMG_NUM      = 100000
 TEST_DATASIZE       = 100000
+TRAIN_MAX_TIFS_FOR_MODEL = max(0, _env_int("NEUROPILOT_TRAIN_MAX_TIFS", 4))
 
 iter_num = 2  # iter0 + iter1
 
@@ -662,9 +674,18 @@ def resolve_advisor_backend(pipeline_mode: str, configured_backend: str) -> str:
     return backend
 
 
-def get_single_tif_path_strict(folder: str) -> Path:
-    root = Path(folder)
-    tifs = sorted([p for p in root.iterdir() if p.is_file() and p.suffix.lower() in (".tif", ".tiff")])
+def list_tif_paths(folder: str | Path) -> list[Path]:
+    root = Path(folder).expanduser()
+    if not root.exists() or not root.is_dir():
+        raise FileNotFoundError(f"Input folder not found: {root}")
+    return sorted(
+        [p for p in root.iterdir() if p.is_file() and p.suffix.lower() in (".tif", ".tiff")],
+        key=lambda p: p.name.lower(),
+    )
+
+
+def get_single_tif_path_strict(folder: str | Path) -> Path:
+    tifs = list_tif_paths(folder)
     if len(tifs) == 0:
         raise FileNotFoundError(f"No tif found under: {folder}")
     if len(tifs) > 1:
@@ -672,8 +693,78 @@ def get_single_tif_path_strict(folder: str) -> Path:
     return tifs[0]
 
 
-def get_first_tif_shape(datasets_path: str):
-    tif_list = sorted(list(Path(datasets_path).glob("*.tif")) + list(Path(datasets_path).glob("*.tiff")))
+def choose_training_tifs(tif_paths: list[Path], max_count: int) -> list[Path]:
+    if not tif_paths:
+        raise RuntimeError("Cannot select a denoise training subset from an empty tif list.")
+    if max_count <= 0 or len(tif_paths) <= max_count:
+        return list(tif_paths)
+    if max_count == 1:
+        return [tif_paths[0]]
+
+    n = len(tif_paths)
+    chosen_indexes = []
+    seen = set()
+    for i in range(max_count):
+        idx = int(round(i * (n - 1) / (max_count - 1)))
+        if idx not in seen:
+            chosen_indexes.append(idx)
+            seen.add(idx)
+    for idx in range(n):
+        if len(chosen_indexes) >= max_count:
+            break
+        if idx not in seen:
+            chosen_indexes.append(idx)
+            seen.add(idx)
+    return [tif_paths[idx] for idx in sorted(chosen_indexes)]
+
+
+def tif_identity(path: str | Path) -> dict:
+    path = Path(path)
+    stat = path.stat()
+    return {
+        "name": path.name,
+        "path": str(path),
+        "bytes": int(stat.st_size),
+        "mtime_ns": int(stat.st_mtime_ns),
+    }
+
+
+def tif_selection_fingerprint(paths: list[Path]) -> str:
+    payload = [tif_identity(path) for path in paths]
+    return compute_fingerprint({"tifs": payload})[:12]
+
+
+def link_or_copy_tif(src: str | Path, dst: str | Path) -> Path:
+    src = Path(src).resolve()
+    dst = Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists():
+        try:
+            if dst.stat().st_size == src.stat().st_size:
+                return dst
+            dst.unlink()
+        except OSError:
+            dst.unlink(missing_ok=True)
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+    return dst
+
+
+def materialize_tif_subset(src_paths: list[Path], target_dir: str | Path) -> Path:
+    target_dir = Path(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for src in src_paths:
+        link_or_copy_tif(src, target_dir / src.name)
+    return target_dir
+
+
+def get_first_tif_shape(datasets_path: str | Path):
+    try:
+        tif_list = list_tif_paths(datasets_path)
+    except FileNotFoundError:
+        return None
     if not tif_list:
         return None
     with tiff.TiffFile(str(tif_list[0])) as tf:
@@ -756,6 +847,7 @@ def train_one_model_if_needed(
     iiii: int,
     effective_params: dict,
     train_pth_dir: str | Path,
+    training_selection: list[dict] | None = None,
 ) -> dict:
     sample_mode = str(effective_params["sample_mode"])
     n_epochs = int(effective_params["n_epochs"])
@@ -782,6 +874,7 @@ def train_one_model_if_needed(
         "patch_t": int(patch_t),
         "batch_size": int(batch_size),
         "gpu": str(GPU),
+        "training_selection": training_selection or [],
     }
 
     has_pth = has_pth_file(str(train_model_dir))
@@ -803,6 +896,7 @@ def train_one_model_if_needed(
         }
         return {
             "pth_name": pth_name,
+            "pth_dir": str(train_pth_dir),
             "train_params": train_params,
             "runtime_summary": runtime_summary,
         }
@@ -841,6 +935,7 @@ def train_one_model_if_needed(
     write_json(runtime_path, runtime_summary)
     return {
         "pth_name": pth_name,
+        "pth_dir": str(train_pth_dir),
         "train_params": train_params,
         "runtime_summary": runtime_summary,
     }
@@ -850,36 +945,40 @@ def train_one_model_if_needed(
 # 2) MAIN PIPELINE FOR ONE FOLDER
 # =============================================================================
 
-def run_one_folder(folder_name: str) -> None:
-    raw_datasets_path = os.path.join(directory_path, folder_name)
-    raw_tif_path = get_single_tif_path_strict(raw_datasets_path)
-    folder_tag = make_artifact_tag(folder_name)
-    folder_output_name = _folder_output_name(folder_name)
-    runtime_paths = _folder_runtime_paths(folder_name)
-    run_root = runtime_paths["run_root"]
-    test_output_root = runtime_paths["results_deepcad"]
-    train_pth_root = runtime_paths["pth_deepcad"]
-    demotion_root = runtime_paths["results_demotion"]
-    logs_root = runtime_paths["logs"]
+def clone_llm_artifacts(shared_llm_dir: str | Path, target_llm_dir: str | Path) -> None:
+    shared_llm_dir = Path(shared_llm_dir)
+    target_llm_dir = Path(target_llm_dir)
+    target_llm_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "mode.json",
+        "request.json",
+        "response_raw.json",
+        "suggestion_validated.json",
+        "applied_diff.json",
+        "continue_iteration_record.json",
+        "apply_warnings.json",
+        "forced_mock_response.json",
+        "forced_mock_response_disabled.json",
+    ):
+        src = shared_llm_dir / name
+        if src.exists():
+            shutil.copy2(src, target_llm_dir / name)
 
-    denoise_datasets_path = raw_datasets_path
-    demotion_raw_datasets_path = raw_datasets_path
-    pipeline_mode = normalize_pipeline_mode(PIPELINE_LLM_MODE)
-    advisor_backend = resolve_advisor_backend(pipeline_mode, ADVISOR_BACKEND)
-    print(
-        f"[PIPELINE-MODE] folder={folder_name} "
-        f"folder_tag={folder_tag} pipeline_mode={pipeline_mode} "
-        f"is_cell_data={IS_CELL_DATA} dataset_profile={DATASET_PROFILE} "
-        f"advisor_backend={advisor_backend} iter_num={iter_num} "
-        f"advisor_model_cfg={ADVISOR_MODEL} advisor_base_url_cfg={ADVISOR_BASE_URL}"
-    )
-    print(f"[RUN_ROOT] folder={folder_name} output_root={run_root}")
 
-    ensure_dir(str(run_root))
-    ensure_dir(str(test_output_root))
-    ensure_dir(str(train_pth_root))
-    ensure_dir(str(demotion_root))
-    ensure_dir(str(logs_root))
+def init_stack_state(
+    folder_name: str,
+    folder_tag: str,
+    raw_tif_path: Path,
+    folder_results_root: Path,
+    all_raw_tifs: list[Path],
+    training_raw_tifs: list[Path],
+    pipeline_mode: str,
+    advisor_backend: str,
+) -> dict:
+    stack_tag = make_artifact_tag(raw_tif_path.stem, max_prefix=32)
+    run_root = folder_results_root / stack_tag
+    raw_input_dir = run_root / "raw_input"
+    materialize_tif_subset([raw_tif_path], raw_input_dir)
 
     manifests_dir = run_root / "manifests"
     iterations_root = run_root / "iterations"
@@ -902,52 +1001,138 @@ def run_one_folder(folder_name: str) -> None:
     else:
         raw_metrics = compute_metrics_for_tif(raw_tif_path, raw_metrics_dir)
 
+    training_policy = {
+        "scope": "input_subfolder_shared_model",
+        "selection_policy": "sorted_even_subset",
+        "max_tifs_for_model": int(TRAIN_MAX_TIFS_FOR_MODEL),
+        "all_tifs": [tif_identity(path) for path in all_raw_tifs],
+        "selected_tifs": [tif_identity(path) for path in training_raw_tifs],
+        "same_modality_recommendation": (
+            "All tif files in the same input subfolder should be as similar as possible "
+            "in data type, imaging modality, noise profile, and acquisition settings."
+        ),
+    }
+
     pipeline_manifest = {
         "schema_version": "pipeline_manifest.v2",
         "folder_name": folder_name,
         "folder_tag": folder_tag,
+        "stack_name": raw_tif_path.name,
+        "stack_tag": stack_tag,
+        "raw_tif_path": str(raw_tif_path),
         "is_cell_data": bool(IS_CELL_DATA),
         "dataset_profile": DATASET_PROFILE,
         "pipeline_llm_mode": pipeline_mode,
         "advisor_backend": advisor_backend,
         "iter_num": int(iter_num),
         "output_root": str(run_root),
-        "output_subfolder_name": folder_output_name,
+        "output_subfolder_name": stack_tag,
         "raw_metrics_json": str(raw_metrics_json_path),
+        "denoise_training_policy": training_policy,
         "iterations": [],
     }
     final_used_params = {
         "schema_version": "final_used_params.v2",
         "folder_name": folder_name,
         "folder_tag": folder_tag,
+        "stack_name": raw_tif_path.name,
+        "stack_tag": stack_tag,
         "is_cell_data": bool(IS_CELL_DATA),
         "dataset_profile": DATASET_PROFILE,
         "pipeline_llm_mode": pipeline_mode,
         "advisor_backend": advisor_backend,
         "output_root": str(run_root),
-        "output_subfolder_name": folder_output_name,
+        "output_subfolder_name": stack_tag,
+        "denoise_training_policy": training_policy,
         "iterations": [],
     }
+    return {
+        "folder_name": folder_name,
+        "folder_tag": folder_tag,
+        "raw_tif_path": raw_tif_path,
+        "raw_tif_name": raw_tif_path.name,
+        "stack_tag": stack_tag,
+        "run_root": run_root,
+        "manifests_dir": manifests_dir,
+        "iterations_root": iterations_root,
+        "current_input_dir": raw_input_dir,
+        "last_iter_denoise_tif_path": None,
+        "raw_metrics": raw_metrics,
+        "pipeline_manifest": pipeline_manifest,
+        "final_used_params": final_used_params,
+        "iteration_contexts": {},
+    }
+
+
+def run_one_folder(folder_name: str) -> None:
+    raw_datasets_path = Path(directory_path).expanduser() / folder_name
+    raw_tif_paths = list_tif_paths(raw_datasets_path)
+    if not raw_tif_paths:
+        raise FileNotFoundError(f"No tif found under: {raw_datasets_path}")
+
+    folder_tag = make_artifact_tag(folder_name)
+    folder_results_root = _folder_results_root(folder_name)
+    shared_root = folder_results_root / "_shared"
+    shared_train_pth_dir = shared_root / "pth_deepcad"
+    shared_iterations_root = shared_root / "iterations"
+    shared_train_pth_dir.mkdir(parents=True, exist_ok=True)
+    shared_iterations_root.mkdir(parents=True, exist_ok=True)
+
+    pipeline_mode = normalize_pipeline_mode(PIPELINE_LLM_MODE)
+    advisor_backend = resolve_advisor_backend(pipeline_mode, ADVISOR_BACKEND)
+    training_raw_tifs = choose_training_tifs(raw_tif_paths, TRAIN_MAX_TIFS_FOR_MODEL)
+    training_names = {path.name for path in training_raw_tifs}
+
+    print(
+        f"[PIPELINE-MODE] folder={folder_name} folder_tag={folder_tag} "
+        f"pipeline_mode={pipeline_mode} is_cell_data={IS_CELL_DATA} "
+        f"dataset_profile={DATASET_PROFILE} advisor_backend={advisor_backend} "
+        f"iter_num={iter_num} tif_count={len(raw_tif_paths)} "
+        f"train_tif_count={len(training_raw_tifs)}"
+    )
+    print("[TRAIN-TIF-SELECTION] =>", [path.name for path in training_raw_tifs])
+    print(
+        "[TRAIN-TIF-GUIDANCE] TIFF files within the same input subfolder should be as similar "
+        "as possible in modality/type, acquisition settings, and noise profile."
+    )
+
+    states = [
+        init_stack_state(
+            folder_name=folder_name,
+            folder_tag=folder_tag,
+            raw_tif_path=raw_tif_path,
+            folder_results_root=folder_results_root,
+            all_raw_tifs=raw_tif_paths,
+            training_raw_tifs=training_raw_tifs,
+            pipeline_mode=pipeline_mode,
+            advisor_backend=advisor_backend,
+        )
+        for raw_tif_path in raw_tif_paths
+    ]
+    control_state = next((state for state in states if state["raw_tif_name"] in training_names), states[0])
     next_iter_overrides = {}
-    last_iter_denoise_tif_path = None
 
     for iiii in range(iter_num):
-        iter_dir = iterations_root / f"iter_{iiii}"
-        iter_metrics_dir = iter_dir / "metrics"
-        iter_llm_dir = iter_dir / "llm"
-        iter_metrics_dir.mkdir(parents=True, exist_ok=True)
-        iter_llm_dir.mkdir(parents=True, exist_ok=True)
+        selected_stage_tifs = [
+            get_single_tif_path_strict(state["current_input_dir"])
+            for state in states
+            if state["raw_tif_name"] in training_names
+        ]
+        subset_hash = tif_selection_fingerprint(selected_stage_tifs)
+        train_subset_dir = shared_root / "train_inputs" / f"iter_{iiii}_{subset_hash}"
+        materialize_tif_subset(selected_stage_tifs, train_subset_dir)
+        training_selection = [tif_identity(path) for path in selected_stage_tifs]
 
-        default_params = sanitize_train_params(get_default_iter_params(iiii), denoise_datasets_path)
+        default_params = sanitize_train_params(get_default_iter_params(iiii), train_subset_dir)
         effective_params = dict(default_params)
         param_source = "default"
         if iiii in next_iter_overrides:
             ov = next_iter_overrides[iiii]
             effective_params.update({k: v for k, v in ov.items() if k in effective_params})
-            effective_params = sanitize_train_params(effective_params, denoise_datasets_path)
+            effective_params = sanitize_train_params(effective_params, train_subset_dir)
             param_source = ov.get("param_source", "llm_apply")
             print(
-                f"[APPLY] iter={iiii} using prior suggestion override "
+                f"[APPLY] iter={iiii} using shared prior suggestion override "
                 f"sample_mode={effective_params['sample_mode']} "
                 f"n_epochs={effective_params['n_epochs']} "
                 f"patch=({effective_params['patch_x']},{effective_params['patch_y']},{effective_params['patch_t']}) "
@@ -955,179 +1140,213 @@ def run_one_folder(folder_name: str) -> None:
             )
 
         current_params = dict(effective_params)
-        sample_mode = current_params["sample_mode"]
-        n_epochs = current_params["n_epochs"]
         print(
-            f"[ITER-PARAMS] iter={iiii} sample_mode={sample_mode} "
-            f"n_epochs={n_epochs} patch=({current_params['patch_x']},"
-            f"{current_params['patch_y']},{current_params['patch_t']}) "
-            f"batch_size={current_params['batch_size']} param_source={param_source}"
-        )
-        final_used_params["iterations"].append(
-            {"iter_index": iiii, "effective_params": current_params, "param_source": param_source}
+            f"[ITER-PARAMS] folder={folder_name} iter={iiii} "
+            f"sample_mode={current_params['sample_mode']} "
+            f"n_epochs={current_params['n_epochs']} "
+            f"patch=({current_params['patch_x']},{current_params['patch_y']},{current_params['patch_t']}) "
+            f"batch_size={current_params['batch_size']} param_source={param_source} "
+            f"train_subset={train_subset_dir}"
         )
 
         train_result = train_one_model_if_needed(
-            denoise_datasets_path=denoise_datasets_path,
+            denoise_datasets_path=str(train_subset_dir),
             folder_name=folder_tag,
             iiii=iiii,
             effective_params=current_params,
-            train_pth_dir=train_pth_root,
+            train_pth_dir=shared_train_pth_dir,
+            training_selection=training_selection,
         )
         test_deepcad_model = train_result["pth_name"]
         train_runtime_summary = train_result["runtime_summary"]
-        write_json(iter_metrics_dir / "train_runtime.json", train_runtime_summary)
-        test_pth_path = train_pth_root
+        test_pth_path = Path(train_result["pth_dir"])
 
-        test_output_folder = f"{folder_tag}_iter{iiii}"
-        test_denoise_dir = test_output_root / f"{test_output_folder}_DeepCAD"
+        for state in states:
+            run_root = Path(state["run_root"])
+            iter_dir = state["iterations_root"] / f"iter_{iiii}"
+            iter_metrics_dir = iter_dir / "metrics"
+            iter_llm_dir = iter_dir / "llm"
+            iter_metrics_dir.mkdir(parents=True, exist_ok=True)
+            iter_llm_dir.mkdir(parents=True, exist_ok=True)
+            write_json(iter_metrics_dir / "train_runtime.json", train_runtime_summary)
 
-        denoise_stage_params = {
-            "datasets_path": str(denoise_datasets_path),
-            "pth_dir": str(test_pth_path),
-            "denoise_model": str(test_deepcad_model),
-            "output_dir": str(test_output_root),
-            "output_folder": str(test_output_folder),
-            "patch_xy": int(PATCH_XY_TEST),
-            "patch_t": int(PATCH_T_TEST),
-            "overlap_factor": float(OVERLAP_FACTOR),
-            "gpu": str(GPU),
-            "num_workers": int(NUM_WORKERS),
-            "fmap": int(FMAP),
-            "scale_factor": int(SCALE_FACTOR),
-            "test_datasize": int(TEST_DATASIZE),
-        }
-
-        denoise_skip_info = inspect_sidecar_match(test_denoise_dir, "denoise.params.json", denoise_stage_params)
-        denoise_has_tif = has_valid_tif(test_denoise_dir)
-        denoise_skip_decision_reason = "execute_missing_output_or_sidecar_mismatch"
-        if denoise_has_tif and denoise_skip_info["fingerprint_match"]:
-            denoise_skip_decision_reason = "skip_safe_reuse_matched_fingerprint"
-        write_json(iter_metrics_dir / "denoise_skip_check.json", {
-            "has_valid_tif": denoise_has_tif,
-            "skip_decision_reason": denoise_skip_decision_reason,
-            **denoise_skip_info,
-        })
-        print(
-            f"[DENOISE-CHECK] iter={iiii} has_tif={denoise_has_tif} "
-            f"sidecar_exists={denoise_skip_info['sidecar_exists']} "
-            f"fp_match={denoise_skip_info['fingerprint_match']} "
-            f"reason={denoise_skip_info['reason']} skip_decision_reason={denoise_skip_decision_reason}"
-        )
-        if denoise_has_tif and denoise_skip_info["fingerprint_match"]:
-            print(f"\033[93m[SKIP]\033[0m Found existing denoised tif with matching sidecar in: {test_denoise_dir}")
-            output_path = test_denoise_dir
-        else:
-            print(f"[EXECUTE] iter={iiii} run test_deepcad")
-            output_path = test_deepcad(
-                datasets_path=denoise_datasets_path,
-                pth_dir=str(test_pth_path),
-                denoise_model=test_deepcad_model,
-                output_dir=str(test_output_root),
-                output_folder=test_output_folder,
-                patch_xy=PATCH_XY_TEST,
-                patch_t=PATCH_T_TEST,
-                overlap_factor=OVERLAP_FACTOR,
-                gpu=GPU,
-                num_workers=NUM_WORKERS,
-                fmap=FMAP,
-                scale_factor=SCALE_FACTOR,
-                test_datasize=TEST_DATASIZE,
-            )
-            save_stage_sidecar(test_denoise_dir, "denoise.params.json", "test_deepcad", denoise_stage_params)
-
-        denoise_tif_path = get_single_tif_path_strict(output_path)
-        last_iter_denoise_tif_path = denoise_tif_path
-        denoise_metrics = compute_metrics_for_tif(
-            denoise_tif_path,
-            iter_metrics_dir / "denoise",
-            snr_reference_metrics=raw_metrics,
-        )
-        raw_vs_denoise = compare_two_metrics(raw_metrics, denoise_metrics)
-        write_json(iter_metrics_dir / "comparison_raw_vs_denoise.json", raw_vs_denoise)
-
-        current_stage_metrics = denoise_metrics
-        current_stage_name = "denoise"
-        raw_vs_current_comparison = raw_vs_denoise
-
-        if iiii < iter_num - 1:
-            demotion_input_path = output_path
-            demotion_output_path = demotion_root / f"{folder_tag}_iter{iiii}_demotion"
-            ensure_dir(str(demotion_output_path))
-            # PyLoReg writes sibling dirs like "<demotion_output_path>_mask"; keep names short for Windows path limits.
-            print(
-                f"[PATH-LEN] iter={iiii} demotion_out_len={len(str(demotion_output_path))} "
-                f"demotion_mask_len={len(str(str(demotion_output_path) + '_mask'))}"
+            state["final_used_params"]["iterations"].append(
+                {
+                    "iter_index": iiii,
+                    "effective_params": current_params,
+                    "param_source": param_source,
+                    "shared_train_subset_dir": str(train_subset_dir),
+                    "shared_train_model": str(test_pth_path / test_deepcad_model),
+                }
             )
 
-            motion_stage_params = {
-                "datasets_path": str(demotion_raw_datasets_path),
-                "input_path": str(demotion_input_path),
-                "output_path": str(demotion_output_path),
-                "upstream_denoise_fingerprint": compute_fingerprint(denoise_stage_params),
+            test_output_root = run_root / "results_deepcad"
+            demotion_root = run_root / "results_demotion"
+            ensure_dir(str(test_output_root))
+            ensure_dir(str(demotion_root))
+
+            test_output_folder = f"{state['stack_tag']}_iter{iiii}"
+            test_denoise_dir = test_output_root / f"{test_output_folder}_DeepCAD"
+            denoise_stage_params = {
+                "datasets_path": str(state["current_input_dir"]),
+                "pth_dir": str(test_pth_path),
+                "denoise_model": str(test_deepcad_model),
+                "output_dir": str(test_output_root),
+                "output_folder": str(test_output_folder),
+                "patch_xy": int(PATCH_XY_TEST),
+                "patch_t": int(PATCH_T_TEST),
+                "overlap_factor": float(OVERLAP_FACTOR),
                 "gpu": str(GPU),
-                "iteration_num": 2,
-                "max_frames": None,
+                "num_workers": int(NUM_WORKERS),
+                "fmap": int(FMAP),
+                "scale_factor": int(SCALE_FACTOR),
+                "test_datasize": int(TEST_DATASIZE),
+                "shared_train_subset_dir": str(train_subset_dir),
+                "raw_tif_name": state["raw_tif_name"],
             }
 
-            motion_skip_info = inspect_sidecar_match(demotion_output_path, "motion.params.json", motion_stage_params)
-            motion_has_tif = has_valid_tif(demotion_output_path)
-            motion_skip_decision_reason = "execute_missing_output_or_sidecar_mismatch"
-            if motion_has_tif and motion_skip_info["fingerprint_match"]:
-                motion_skip_decision_reason = "skip_safe_reuse_matched_fingerprint"
-            write_json(iter_metrics_dir / "motion_skip_check.json", {
-                "has_valid_tif": motion_has_tif,
-                "skip_decision_reason": motion_skip_decision_reason,
-                **motion_skip_info,
+            denoise_skip_info = inspect_sidecar_match(test_denoise_dir, "denoise.params.json", denoise_stage_params)
+            denoise_has_tif = has_valid_tif(test_denoise_dir)
+            denoise_skip_decision_reason = "execute_missing_output_or_sidecar_mismatch"
+            if denoise_has_tif and denoise_skip_info["fingerprint_match"]:
+                denoise_skip_decision_reason = "skip_safe_reuse_matched_fingerprint"
+            write_json(iter_metrics_dir / "denoise_skip_check.json", {
+                "has_valid_tif": denoise_has_tif,
+                "skip_decision_reason": denoise_skip_decision_reason,
+                **denoise_skip_info,
             })
             print(
-                f"[MOTION-CHECK] iter={iiii} has_tif={motion_has_tif} "
-                f"sidecar_exists={motion_skip_info['sidecar_exists']} "
-                f"fp_match={motion_skip_info['fingerprint_match']} "
-                f"reason={motion_skip_info['reason']} skip_decision_reason={motion_skip_decision_reason}"
+                f"[DENOISE-CHECK] stack={state['raw_tif_name']} iter={iiii} "
+                f"has_tif={denoise_has_tif} sidecar_exists={denoise_skip_info['sidecar_exists']} "
+                f"fp_match={denoise_skip_info['fingerprint_match']} reason={denoise_skip_info['reason']}"
             )
-            if motion_has_tif and motion_skip_info["fingerprint_match"]:
-                print(f"\033[93m[SKIP]\033[0m motion output exists with matching sidecar: {demotion_output_path}")
+            if denoise_has_tif and denoise_skip_info["fingerprint_match"]:
+                print(f"\033[93m[SKIP]\033[0m Found existing denoised tif with matching sidecar in: {test_denoise_dir}")
+                output_path = str(test_denoise_dir)
             else:
-                print(f"[EXECUTE] iter={iiii} run demotion_PyLoReg")
-                demotion_PyLoReg(
-                    datasets_path=demotion_raw_datasets_path,
-                    input_path=demotion_input_path,
-                    output_path=str(demotion_output_path),
+                print(f"[EXECUTE] stack={state['raw_tif_name']} iter={iiii} run test_deepcad")
+                output_path = test_deepcad(
+                    datasets_path=str(state["current_input_dir"]),
+                    pth_dir=str(test_pth_path),
+                    denoise_model=test_deepcad_model,
+                    output_dir=str(test_output_root),
+                    output_folder=test_output_folder,
+                    patch_xy=PATCH_XY_TEST,
+                    patch_t=PATCH_T_TEST,
+                    overlap_factor=OVERLAP_FACTOR,
                     gpu=GPU,
-                    iteration_num=2,
-                    max_frames=None,
+                    num_workers=NUM_WORKERS,
+                    fmap=FMAP,
+                    scale_factor=SCALE_FACTOR,
+                    test_datasize=TEST_DATASIZE,
                 )
-                save_stage_sidecar(demotion_output_path, "motion.params.json", "demotion_PyLoReg", motion_stage_params)
+                save_stage_sidecar(test_denoise_dir, "denoise.params.json", "test_deepcad", denoise_stage_params)
 
-            motion_tif_path = get_single_tif_path_strict(demotion_output_path)
-            motion_metrics = compute_metrics_for_tif(
-                motion_tif_path,
-                iter_metrics_dir / "motion_corrected",
-                snr_reference_metrics=raw_metrics,
+            denoise_tif_path = get_single_tif_path_strict(output_path)
+            state["last_iter_denoise_tif_path"] = denoise_tif_path
+            denoise_metrics = compute_metrics_for_tif(
+                denoise_tif_path,
+                iter_metrics_dir / "denoise",
+                snr_reference_metrics=state["raw_metrics"],
             )
-            raw_vs_motion = compare_two_metrics(raw_metrics, motion_metrics)
-            write_json(iter_metrics_dir / "comparison_raw_vs_motion.json", raw_vs_motion)
+            raw_vs_denoise = compare_two_metrics(state["raw_metrics"], denoise_metrics)
+            write_json(iter_metrics_dir / "comparison_raw_vs_denoise.json", raw_vs_denoise)
 
-            current_stage_metrics = motion_metrics
-            current_stage_name = "motion_corrected"
-            raw_vs_current_comparison = raw_vs_motion
+            current_stage_metrics = denoise_metrics
+            current_stage_name = "denoise"
+            raw_vs_current_comparison = raw_vs_denoise
 
-            denoise_datasets_path = str(demotion_output_path)
-            demotion_raw_datasets_path = str(demotion_output_path)
+            if iiii < iter_num - 1:
+                demotion_input_path = output_path
+                demotion_output_path = demotion_root / f"{state['stack_tag']}_iter{iiii}_demotion"
+                ensure_dir(str(demotion_output_path))
+                print(
+                    f"[PATH-LEN] stack={state['raw_tif_name']} iter={iiii} "
+                    f"demotion_out_len={len(str(demotion_output_path))} "
+                    f"demotion_mask_len={len(str(demotion_output_path) + '_mask')}"
+                )
+
+                motion_stage_params = {
+                    "datasets_path": str(state["current_input_dir"]),
+                    "input_path": str(demotion_input_path),
+                    "output_path": str(demotion_output_path),
+                    "upstream_denoise_fingerprint": compute_fingerprint(denoise_stage_params),
+                    "gpu": str(GPU),
+                    "iteration_num": 2,
+                    "max_frames": None,
+                    "raw_tif_name": state["raw_tif_name"],
+                }
+
+                motion_skip_info = inspect_sidecar_match(demotion_output_path, "motion.params.json", motion_stage_params)
+                motion_has_tif = has_valid_tif(demotion_output_path)
+                motion_skip_decision_reason = "execute_missing_output_or_sidecar_mismatch"
+                if motion_has_tif and motion_skip_info["fingerprint_match"]:
+                    motion_skip_decision_reason = "skip_safe_reuse_matched_fingerprint"
+                write_json(iter_metrics_dir / "motion_skip_check.json", {
+                    "has_valid_tif": motion_has_tif,
+                    "skip_decision_reason": motion_skip_decision_reason,
+                    **motion_skip_info,
+                })
+                print(
+                    f"[MOTION-CHECK] stack={state['raw_tif_name']} iter={iiii} "
+                    f"has_tif={motion_has_tif} sidecar_exists={motion_skip_info['sidecar_exists']} "
+                    f"fp_match={motion_skip_info['fingerprint_match']} reason={motion_skip_info['reason']}"
+                )
+                if motion_has_tif and motion_skip_info["fingerprint_match"]:
+                    print(f"\033[93m[SKIP]\033[0m motion output exists with matching sidecar: {demotion_output_path}")
+                else:
+                    print(f"[EXECUTE] stack={state['raw_tif_name']} iter={iiii} run demotion_PyLoReg")
+                    demotion_PyLoReg(
+                        datasets_path=str(state["current_input_dir"]),
+                        input_path=str(demotion_input_path),
+                        output_path=str(demotion_output_path),
+                        gpu=GPU,
+                        iteration_num=2,
+                        max_frames=None,
+                    )
+                    save_stage_sidecar(demotion_output_path, "motion.params.json", "demotion_PyLoReg", motion_stage_params)
+
+                motion_tif_path = get_single_tif_path_strict(demotion_output_path)
+                motion_metrics = compute_metrics_for_tif(
+                    motion_tif_path,
+                    iter_metrics_dir / "motion_corrected",
+                    snr_reference_metrics=state["raw_metrics"],
+                )
+                raw_vs_motion = compare_two_metrics(state["raw_metrics"], motion_metrics)
+                write_json(iter_metrics_dir / "comparison_raw_vs_motion.json", raw_vs_motion)
+
+                current_stage_metrics = motion_metrics
+                current_stage_name = "motion_corrected"
+                raw_vs_current_comparison = raw_vs_motion
+                state["current_input_dir"] = demotion_output_path
+
+            if iiii == iter_num - 1:
+                raw_vs_final = compare_two_metrics(state["raw_metrics"], current_stage_metrics)
+                write_json(iter_metrics_dir / "comparison_raw_vs_final.json", raw_vs_final)
+
+            state["iteration_contexts"][iiii] = {
+                "iter_metrics_dir": iter_metrics_dir,
+                "iter_llm_dir": iter_llm_dir,
+                "current_stage_metrics": current_stage_metrics,
+                "current_stage_name": current_stage_name,
+                "raw_vs_current_comparison": raw_vs_current_comparison,
+            }
 
         target_iter_index = iiii + 1 if iiii < iter_num - 1 else None
+        target_datasets_path = control_state["current_input_dir"] if target_iter_index is not None else train_subset_dir
         target_defaults = sanitize_train_params(
             get_default_iter_params(iiii if target_iter_index is None else target_iter_index),
-            denoise_datasets_path,
+            target_datasets_path,
         )
-        advisor_target = get_advisor_target(target_defaults=target_defaults, datasets_path=denoise_datasets_path)
+        advisor_target = get_advisor_target(target_defaults=target_defaults, datasets_path=target_datasets_path)
         advisor_target["target_iter"] = target_iter_index
         advisor_target["mode_policy"] = {
             "iter_0": "XY",
             "iter_ge_1": "T",
         }
 
+        shared_llm_dir = shared_iterations_root / f"iter_{iiii}" / "llm"
+        shared_llm_dir.mkdir(parents=True, exist_ok=True)
         llm_mode_payload = {
             "pipeline_mode": pipeline_mode,
             "advisor_backend": advisor_backend,
@@ -1135,36 +1354,51 @@ def run_one_folder(folder_name: str) -> None:
             "advisor_model_config": ADVISOR_MODEL,
             "advisor_base_url_config": ADVISOR_BASE_URL,
             "iter_index": iiii,
+            "shared_training": {
+                "enabled": True,
+                "train_subset_dir": str(train_subset_dir),
+                "selected_tifs": training_selection,
+                "reference_stack_for_llm": control_state["raw_tif_name"],
+            },
             "execution_policy": (
                 "v2 apply-only-for(n_epochs,patch_x,patch_y,patch_t,batch_size); "
                 "sample_mode locked to default schedule(iter0=XY,iter>=1=T); "
                 "continue_iteration is record-only"
             ),
         }
-        write_json(iter_llm_dir / "mode.json", llm_mode_payload)
+        write_json(shared_llm_dir / "mode.json", llm_mode_payload)
         print(
             f"[LLM-CHECK] iter={iiii} pipeline_mode={pipeline_mode} "
             f"advisor_backend={advisor_backend} "
-            f"(v2: sample_mode locked; n_epochs/patch_x/patch_y/patch_t/batch_size may apply)"
+            f"(shared training: one suggestion per input subfolder; v2 apply-only fields unchanged)"
         )
 
+        control_iter_context = control_state["iteration_contexts"][iiii]
         llm_context = {
             "folder_name": folder_name,
+            "stack_name": control_state["raw_tif_name"],
             "iter_index": iiii,
             "current_params": current_params,
             "current_runtime": {
                 "train": train_runtime_summary,
             },
             "suggestion_target": advisor_target,
-            "metrics": current_stage_metrics,
+            "metrics": control_iter_context["current_stage_metrics"],
             "comparisons": {
-                f"raw_vs_{current_stage_name}": raw_vs_current_comparison,
+                f"raw_vs_{control_iter_context['current_stage_name']}": control_iter_context["raw_vs_current_comparison"],
+            },
+            "multi_tif_training": {
+                "enabled": True,
+                "all_tifs": [path.name for path in raw_tif_paths],
+                "selected_training_tifs": [path.name for path in training_raw_tifs],
+                "reference_stack_for_llm": control_state["raw_tif_name"],
             },
         }
         if iiii == iter_num - 1:
-            raw_vs_final = compare_two_metrics(raw_metrics, current_stage_metrics)
-            write_json(iter_metrics_dir / "comparison_raw_vs_final.json", raw_vs_final)
-            llm_context["comparisons"]["raw_vs_final"] = raw_vs_final
+            llm_context["comparisons"]["raw_vs_final"] = compare_two_metrics(
+                control_state["raw_metrics"],
+                control_iter_context["current_stage_metrics"],
+            )
 
         if pipeline_mode == "off":
             off_defaults = advisor_target["default_params"]
@@ -1185,14 +1419,14 @@ def run_one_folder(folder_name: str) -> None:
                     "timestamp_utc": now_tag(),
                 },
             }
-            write_json(iter_llm_dir / "request.json", {"mode": "off", "context": llm_context})
-            write_json(iter_llm_dir / "response_raw.json", {"status": "off_mode", "reason": "advisor not called"})
-            write_json(iter_llm_dir / "suggestion_validated.json", llm_suggestion)
+            write_json(shared_llm_dir / "request.json", {"mode": "off", "context": llm_context})
+            write_json(shared_llm_dir / "response_raw.json", {"status": "off_mode", "reason": "advisor not called"})
+            write_json(shared_llm_dir / "suggestion_validated.json", llm_suggestion)
         else:
             forced_mock_response = get_forced_mock_response(iiii) if advisor_backend == "mock" else None
             if advisor_backend == "live" and FORCE_MOCK_SUGGESTIONS_BY_ITER:
                 write_json(
-                    iter_llm_dir / "forced_mock_response_disabled.json",
+                    shared_llm_dir / "forced_mock_response_disabled.json",
                     {
                         "backend_effective": "live",
                         "reason": "force mock suggestions disabled when advisor backend is live",
@@ -1200,7 +1434,7 @@ def run_one_folder(folder_name: str) -> None:
                 )
             if forced_mock_response is not None:
                 print(f"[LLM-MOCK-OVERRIDE] iter={iiii} using forced mock suggestion override")
-                write_json(iter_llm_dir / "forced_mock_response.json", forced_mock_response)
+                write_json(shared_llm_dir / "forced_mock_response.json", forced_mock_response)
             llm_suggestion = get_llm_suggestion(
                 context=llm_context,
                 mode=advisor_backend,
@@ -1208,19 +1442,17 @@ def run_one_folder(folder_name: str) -> None:
                 model=ADVISOR_MODEL,
                 base_url=ADVISOR_BASE_URL,
                 timeout_s=ADVISOR_TIMEOUT_S,
-                logs_dir=iter_llm_dir,
+                logs_dir=shared_llm_dir,
                 mock_response=forced_mock_response,
             )
         print(
-            f"[LLM-RESULT] iter={iiii} suggested_n_epochs={llm_suggestion.get('n_epochs')} "
+            f"[LLM-RESULT] folder={folder_name} iter={iiii} "
+            f"reference_stack={control_state['raw_tif_name']} "
+            f"suggested_n_epochs={llm_suggestion.get('n_epochs')} "
             f"suggested_patch=({llm_suggestion.get('patch_x')},{llm_suggestion.get('patch_y')},"
             f"{llm_suggestion.get('patch_t')}) "
             f"suggested_batch_size={llm_suggestion.get('batch_size')} "
-            f"continue_iteration(record_only)={llm_suggestion.get('continue_iteration')} "
-            f"backend_effective={llm_suggestion.get('meta', {}).get('backend_effective')} "
-            f"model_used={llm_suggestion.get('meta', {}).get('model_used')} "
-            f"base_url_used={llm_suggestion.get('meta', {}).get('base_url_used')} "
-            f"api_key_source={llm_suggestion.get('meta', {}).get('api_key_source')}"
+            f"continue_iteration(record_only)={llm_suggestion.get('continue_iteration')}"
         )
 
         applied_changes = {}
@@ -1234,7 +1466,7 @@ def run_one_folder(folder_name: str) -> None:
             next_effective, warnings, accepted_fields = validate_apply_fields(
                 llm_suggestion,
                 target_defaults=next_default,
-                datasets_path=denoise_datasets_path,
+                datasets_path=target_datasets_path,
             )
             apply_warnings.extend(warnings)
             next_source = "llm_apply" if accepted_fields else "fallback"
@@ -1275,95 +1507,104 @@ def run_one_folder(folder_name: str) -> None:
             "changes": applied_changes,
         }
 
-        write_json(iter_llm_dir / "applied_diff.json", applied_diff)
-        write_json(iter_llm_dir / "continue_iteration_record.json", {"continue_iteration": llm_suggestion.get("continue_iteration")})
+        write_json(shared_llm_dir / "applied_diff.json", applied_diff)
+        write_json(shared_llm_dir / "continue_iteration_record.json", {"continue_iteration": llm_suggestion.get("continue_iteration")})
         if apply_warnings:
-            write_json(iter_llm_dir / "apply_warnings.json", {"warnings": apply_warnings})
+            write_json(shared_llm_dir / "apply_warnings.json", {"warnings": apply_warnings})
 
-        pipeline_manifest["iterations"].append(
-            {
-                "iter_index": iiii,
-                "current_params": current_params,
-                "param_source": param_source,
-                "train_runtime_summary": train_runtime_summary,
-                "llm_target_default_params": advisor_target["default_params"],
-                "current_stage": current_stage_name,
-                "metrics_dir": str(iter_metrics_dir),
-                "llm_dir": str(iter_llm_dir),
-                "llm_continue_iteration_recorded": llm_suggestion.get("continue_iteration"),
-                "suggestion_target_iter": suggestion_target_iter,
-                "applied_to_iter": applied_to_iter,
-                "not_applied_reason": not_applied_reason,
-            }
+        for state in states:
+            iter_context = state["iteration_contexts"][iiii]
+            clone_llm_artifacts(shared_llm_dir, iter_context["iter_llm_dir"])
+            state["pipeline_manifest"]["iterations"].append(
+                {
+                    "iter_index": iiii,
+                    "current_params": current_params,
+                    "param_source": param_source,
+                    "train_runtime_summary": train_runtime_summary,
+                    "shared_train_subset_dir": str(train_subset_dir),
+                    "shared_train_model": str(test_pth_path / test_deepcad_model),
+                    "llm_target_default_params": advisor_target["default_params"],
+                    "current_stage": iter_context["current_stage_name"],
+                    "metrics_dir": str(iter_context["iter_metrics_dir"]),
+                    "llm_dir": str(iter_context["iter_llm_dir"]),
+                    "shared_llm_dir": str(shared_llm_dir),
+                    "llm_reference_stack": control_state["raw_tif_name"],
+                    "llm_continue_iteration_recorded": llm_suggestion.get("continue_iteration"),
+                    "suggestion_target_iter": suggestion_target_iter,
+                    "applied_to_iter": applied_to_iter,
+                    "not_applied_reason": not_applied_reason,
+                }
+            )
+
+    for state in states:
+        if state["last_iter_denoise_tif_path"] is None:
+            raise RuntimeError(f"No final denoise tif found for {state['raw_tif_name']} to materialize final stack.")
+
+        run_root = Path(state["run_root"])
+        downstream_result = materialize_final_and_run_downstream(
+            raw_stack_path=state["raw_tif_path"],
+            final_stack_source_path=state["last_iter_denoise_tif_path"],
+            output_root=run_root,
+            dataset_profile=DATASET_PROFILE,
+            downstream_config=DOWNSTREAM_CONFIG,
+            final_source_semantic="last_iter_denoised_output",
         )
+        state["pipeline_manifest"]["downstream"] = {
+            "is_cell_data": bool(IS_CELL_DATA),
+            "dataset_profile": DATASET_PROFILE,
+            "cell_downstream_enabled": bool(IS_CELL_DATA),
+            "final_stack_path": downstream_result.get("final_stack_path"),
+            "final_stack_sidecar_path": downstream_result.get("final_stack_sidecar_path"),
+            "segmentation_output_dir": downstream_result.get("segmentation_output_dir"),
+            "downstream_subprocess_python": downstream_result.get("downstream_subprocess_python"),
+            "downstream_subprocess_log_path": downstream_result.get("downstream_subprocess_log_path"),
+            "downstream_subprocess_result_path": downstream_result.get("downstream_subprocess_result_path"),
+            "backend_status_path": downstream_result.get("backend_status_path"),
+            "run_status_path": downstream_result.get("run_status_path"),
+            "summary_path": downstream_result.get("summary_path"),
+            "comparison_path": downstream_result.get("comparison_path"),
+        }
 
-    if last_iter_denoise_tif_path is None:
-        raise RuntimeError("No final denoise tif found to materialize final stack.")
+        write_json(state["manifests_dir"] / "pipeline_manifest.json", state["pipeline_manifest"])
+        write_json(run_root / "final_used_params.json", state["final_used_params"])
 
-    downstream_result = materialize_final_and_run_downstream(
-        raw_stack_path=raw_tif_path,
-        final_stack_source_path=last_iter_denoise_tif_path,
-        output_root=run_root,
-        dataset_profile=DATASET_PROFILE,
-        downstream_config=DOWNSTREAM_CONFIG,
-        final_source_semantic="last_iter_denoised_output",
-    )
-    pipeline_manifest["downstream"] = {
-        "is_cell_data": bool(IS_CELL_DATA),
-        "dataset_profile": DATASET_PROFILE,
-        "cell_downstream_enabled": bool(IS_CELL_DATA),
-        "final_stack_path": downstream_result.get("final_stack_path"),
-        "final_stack_sidecar_path": downstream_result.get("final_stack_sidecar_path"),
-        "segmentation_output_dir": downstream_result.get("segmentation_output_dir"),
-        "downstream_subprocess_python": downstream_result.get("downstream_subprocess_python"),
-        "downstream_subprocess_log_path": downstream_result.get("downstream_subprocess_log_path"),
-        "downstream_subprocess_result_path": downstream_result.get("downstream_subprocess_result_path"),
-        "backend_status_path": downstream_result.get("backend_status_path"),
-        "run_status_path": downstream_result.get("run_status_path"),
-        "summary_path": downstream_result.get("summary_path"),
-        "comparison_path": downstream_result.get("comparison_path"),
-    }
-
-    write_json(manifests_dir / "pipeline_manifest.json", pipeline_manifest)
-    write_json(run_root / "final_used_params.json", final_used_params)
-
-    report_result = build_deterministic_report(
-        run_root=run_root,
-        try_pdf=REPORT_TRY_PDF,
-        generate_overview_pngs=REPORT_GENERATE_OVERVIEW_PNGS,
-        imaging_modality=REPORT_IMAGING_MODALITY,
-        pixel_size_um=REPORT_PIXEL_SIZE_UM,
-        fps_hz=REPORT_FPS_HZ,
-        display_name_final=REPORT_DISPLAY_NAME_FINAL,
-        report_embed_assets=REPORT_EMBED_ASSETS,
-        report_inline_css=REPORT_INLINE_CSS,
-        report_generate_pdf=REPORT_GENERATE_PDF,
-        report_crop_scale_factor=REPORT_CROP_SCALE_FACTOR,
-        report_kymograph_line_count=REPORT_KYMOGRAPH_LINE_COUNT,
-        report_use_intermediate_sections=REPORT_USE_INTERMEDIATE_SECTIONS,
-    )
-    pipeline_manifest["report"] = {
-        "report_data_json": report_result.get("report_data_json"),
-        "report_manifest_json": report_result.get("report_manifest_json"),
-        "report_html": report_result.get("report_html"),
-        "report_print_html": report_result.get("report_print_html"),
-        "report_pdf": report_result.get("report_pdf"),
-        "overview_page1_png": report_result.get("overview_page1_png"),
-        "overview_page2_png": report_result.get("overview_page2_png"),
-        "config": {
-            "imaging_modality": REPORT_IMAGING_MODALITY,
-            "pixel_size_um": REPORT_PIXEL_SIZE_UM,
-            "fps_hz": REPORT_FPS_HZ,
-            "display_name_final": REPORT_DISPLAY_NAME_FINAL,
-            "report_embed_assets": REPORT_EMBED_ASSETS,
-            "report_inline_css": REPORT_INLINE_CSS,
-            "report_generate_pdf": REPORT_GENERATE_PDF,
-            "report_crop_scale_factor": REPORT_CROP_SCALE_FACTOR,
-            "report_kymograph_line_count": REPORT_KYMOGRAPH_LINE_COUNT,
-            "report_use_intermediate_sections": REPORT_USE_INTERMEDIATE_SECTIONS,
-        },
-    }
-    write_json(manifests_dir / "pipeline_manifest.json", pipeline_manifest)
+        report_result = build_deterministic_report(
+            run_root=run_root,
+            try_pdf=REPORT_TRY_PDF,
+            generate_overview_pngs=REPORT_GENERATE_OVERVIEW_PNGS,
+            imaging_modality=REPORT_IMAGING_MODALITY,
+            pixel_size_um=REPORT_PIXEL_SIZE_UM,
+            fps_hz=REPORT_FPS_HZ,
+            display_name_final=REPORT_DISPLAY_NAME_FINAL,
+            report_embed_assets=REPORT_EMBED_ASSETS,
+            report_inline_css=REPORT_INLINE_CSS,
+            report_generate_pdf=REPORT_GENERATE_PDF,
+            report_crop_scale_factor=REPORT_CROP_SCALE_FACTOR,
+            report_kymograph_line_count=REPORT_KYMOGRAPH_LINE_COUNT,
+            report_use_intermediate_sections=REPORT_USE_INTERMEDIATE_SECTIONS,
+        )
+        state["pipeline_manifest"]["report"] = {
+            "report_data_json": report_result.get("report_data_json"),
+            "report_manifest_json": report_result.get("report_manifest_json"),
+            "report_html": report_result.get("report_html"),
+            "report_print_html": report_result.get("report_print_html"),
+            "report_pdf": report_result.get("report_pdf"),
+            "overview_page1_png": report_result.get("overview_page1_png"),
+            "overview_page2_png": report_result.get("overview_page2_png"),
+            "config": {
+                "imaging_modality": REPORT_IMAGING_MODALITY,
+                "pixel_size_um": REPORT_PIXEL_SIZE_UM,
+                "fps_hz": REPORT_FPS_HZ,
+                "display_name_final": REPORT_DISPLAY_NAME_FINAL,
+                "report_embed_assets": REPORT_EMBED_ASSETS,
+                "report_inline_css": REPORT_INLINE_CSS,
+                "report_generate_pdf": REPORT_GENERATE_PDF,
+                "report_crop_scale_factor": REPORT_CROP_SCALE_FACTOR,
+                "report_kymograph_line_count": REPORT_KYMOGRAPH_LINE_COUNT,
+                "report_use_intermediate_sections": REPORT_USE_INTERMEDIATE_SECTIONS,
+            },
+        }
+        write_json(state["manifests_dir"] / "pipeline_manifest.json", state["pipeline_manifest"])
 
 
 # =============================================================================
@@ -1420,7 +1661,7 @@ def main():
         if loose_tifs:
             raise RuntimeError(
                 "No dataset subfolders were found under the input root. "
-                "The pipeline expects one child folder per dataset, with exactly one TIFF inside each child folder. "
+                "The pipeline expects one child folder per dataset, with one or more TIFF files inside each child folder. "
                 f"Found loose TIFF files at the root instead: {loose_tifs[:5]}. "
                 "Run `python prepare_input_tiffs.py --input-dir <your_tif_folder>` first to rewrite and organize them into subfolders."
             )

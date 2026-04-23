@@ -7,12 +7,17 @@ The main pipeline expects one child folder per dataset:
 ```text
 /path/to/datasets/
   sample_a/
-    sample_a.tif
+    sample_a_fov01.tif
+    sample_a_fov02.tif
   sample_b/
     sample_b.tif
 ```
 
-Each first-level dataset folder should contain exactly one primary TIFF movie.
+Each first-level dataset folder may contain one or more primary TIFF movies.
+
+Within the same dataset folder, keep TIFF files as similar as possible in modality/type, acquisition settings, and noise profile. The pipeline trains one shared denoise model per dataset folder using a deterministic subset of its TIFF files, then processes each TIFF separately through denoising, registration, final-stack materialization, downstream analysis, and report generation.
+
+By default, at most `4` TIFF files per dataset folder are used for the shared denoise training stage. Set `NEUROPILOT_TRAIN_MAX_TIFS=0` if you want to use all TIFF files in that folder for denoise training.
 
 If your TIFF files are currently flat in one large folder, prepare them first:
 
@@ -100,7 +105,7 @@ python neuropilot_pipeline.py \
 
 ## What To Expect
 
-The pipeline writes metrics, iteration artifacts, final outputs, manifests, and an HTML report under `--output-dir/<dataset_folder_name>/`.
+The pipeline writes one dataset root under `--output-dir/<dataset_folder_name>/`, with shared training artifacts in `_shared/` and one per-TIFF run folder for metrics, iteration artifacts, final outputs, manifests, and an HTML report.
 
 By default:
 - all child folders are scanned if `--subfolders` is omitted

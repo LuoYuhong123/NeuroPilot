@@ -1,6 +1,6 @@
 # Demo Data Layout
 
-This directory follows the same input layout expected by the main pipeline:
+This directory follows the same input layout expected by the main pipeline: one child folder per dataset, and each child folder may contain one or more related TIFF files.
 
 ```text
 demo_data/
@@ -30,4 +30,4 @@ GitHub Releases page:
 
 The root `.gitignore` excludes those larger TIFFs so they stay local unless you upload them separately as release assets.
 
-After downloading the release assets, place them back into the folder layout shown above.
+After downloading the release assets, place them back into the folder layout shown above. If you place multiple TIFF files into the same child folder, keep them as similar as possible in modality/type, acquisition settings, and noise profile so they can share denoise training sensibly.

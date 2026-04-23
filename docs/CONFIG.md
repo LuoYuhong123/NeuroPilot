@@ -2,7 +2,7 @@
 
 ## Main Entry Parameters
 
-- `--input-dir`: root folder containing one child folder per dataset
+- `--input-dir`: root folder containing one child folder per dataset; each child folder may contain one or more TIFF files
 - `--output-dir`: root folder where run artifacts will be written
 - `--subfolders`: optional dataset subset, written as `sample_a,sample_b` or `['sample_a','sample_b']`
 - `--llm-mode`: `off`, `shadow`, or `apply`
@@ -17,8 +17,18 @@ The main pipeline does not expect all TIFF files to be placed directly under `--
 
 Instead:
 - `--input-dir` should contain multiple child folders
-- each child folder should contain exactly one TIFF file
+- each child folder may contain one or more TIFF files
+- TIFF files within the same child folder should be as similar as possible in imaging modality, acquisition settings, and noise profile
+- the pipeline deterministically selects a subset of TIFF files in that child folder as the shared denoise training set
+- after shared training, each TIFF continues through denoising, registration, final-stack materialization, downstream analysis, and reporting as its own per-stack run
 - if your TIFF files are flat in one folder, first run `prepare_input_tiffs.py`
+
+## Shared Denoise Training Subset
+
+- `NEUROPILOT_TRAIN_MAX_TIFS` controls the maximum number of TIFF files per input child folder used to train the shared denoise model
+- default: `4`
+- set `NEUROPILOT_TRAIN_MAX_TIFS=0` to use all TIFF files in the child folder
+- selection is deterministic and based on sorted filenames
 
 ## LLM Practical Behavior
 
