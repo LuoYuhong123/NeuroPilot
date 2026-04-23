@@ -825,7 +825,7 @@ def run_downstream_analysis(
 ) -> dict:
     cfg = {
         "run_raw": True,
-        "source_files_used": ["STEP0_seg.py", "STEP1_display_v3.py"],
+        "source_files_used": ["suite2p_segmentation.py", "roi_selection_artifacts.py"],
         "backend_name": "suite2p_step0_step1_adapter",
         "backend_version_or_source": "local_repo",
         "segmentation_config": {},
@@ -908,8 +908,8 @@ def run_downstream_analysis(
         }
 
     try:
-        from STEP0_seg import run_suite2p_segmentation
-        from STEP1_display_v3 import select_rois_and_build_artifacts
+        from suite2p_segmentation import run_suite2p_segmentation
+        from roi_selection_artifacts import select_rois_and_build_artifacts
         backend_status["available"] = True
         backend_status["status"] = "available"
     except Exception as exc:

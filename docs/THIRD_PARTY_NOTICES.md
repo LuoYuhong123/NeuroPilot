@@ -29,7 +29,7 @@ These components were modified for NeuroPilot. Because this repository redistrib
 - Upstream project: suite2p
 - Upstream repository: https://github.com/MouseLand/suite2p
 - Upstream license: GPL-3.0
-- Local use in this snapshot: optional downstream segmentation / trace extraction via `STEP0_seg.py`, `downstream_pipeline.py`, and `environment-suite2p.yml`
+- Local use in this snapshot: optional downstream segmentation / trace extraction via `suite2p_segmentation.py`, `roi_selection_artifacts.py`, `downstream_pipeline.py`, and `environment-suite2p.yml`
 
 The suite2p source code is not redistributed in this repository. Users install suite2p separately and remain responsible for complying with the upstream suite2p license when installing, modifying, or redistributing it.
 

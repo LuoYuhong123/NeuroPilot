@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 
-from STEP_input_metrics import (
+from input_metrics import (
     build_snr_reference,
     compute_basic_stats,
     compute_bleaching_summary,

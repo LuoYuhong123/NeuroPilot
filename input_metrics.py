@@ -15,7 +15,7 @@ Outputs:
 3) MIP (maximum intensity projection) over time
 
 Example:
-    python STEP_input_metrics.py ^
+    python input_metrics.py ^
         --input path/to/movie.tif ^
         --output-dir path/to/output ^
         --fps 10 ^
