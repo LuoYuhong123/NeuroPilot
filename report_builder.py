@@ -69,9 +69,19 @@ MODALITY_CMAPS = {
     "3p": plt.get_cmap("afmhot"),
 }
 
+REPORT_FONT_FAMILY = [
+    "DejaVu Sans",
+    "Liberation Sans",
+    "Arial",
+    "Helvetica",
+    "sans-serif",
+]
+REPORT_FONT_CSS = "'DejaVu Sans','Liberation Sans','Helvetica Neue',Arial,Helvetica,sans-serif"
+
 plt.rcParams.update(
     {
-        "font.family": ["Arial", "DejaVu Sans"],
+        "font.family": REPORT_FONT_FAMILY,
+        "font.sans-serif": REPORT_FONT_FAMILY,
         "font.size": 9,
         "axes.titlesize": 10,
         "axes.labelsize": 9,
@@ -2051,20 +2061,20 @@ def _render_report_html(report_data: dict[str, Any], report_dir: Path, print_mod
     style = f"""
     :root {{--raw:{RAW_COLOR};--denoise:{DENOISE_COLOR};--motion:{MOTION_COLOR};--final:{FINAL_COLOR};--border:{BORDER_COLOR};--muted:{TEXT_MUTED};--bg:#ffffff;}}
     * {{ box-sizing: border-box; }}
-    body {{ margin:0; padding:0; background:var(--bg); color:#111111; font-family:Arial, Helvetica, sans-serif; }}
+    body {{ margin:0; padding:0; background:var(--bg); color:#111111; font-family:{REPORT_FONT_CSS}; }}
     .report, .report * {{ overflow-wrap:anywhere; word-break:break-word; white-space:normal; }}
     .report {{ width:min(1420px,95vw); margin:0 auto; padding:18px 18px 28px; }}
     .report-header {{ border-bottom:1px solid var(--border); padding-bottom:16px; margin-bottom:20px; }}
     .report-header h1 {{ margin:0 0 6px; font-size:30px; line-height:1.12; font-weight:700; }}
     .report-sub {{ color:var(--muted); font-size:13px; margin-bottom:10px; }}
     .report-note {{ margin-top:10px; color:#333333; font-size:12px; line-height:1.4; }}
-    .legend {{ display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; }}
+    .legend {{ display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-family:{REPORT_FONT_CSS}; font-size:12px; }}
     .legend span::before {{ content:''; display:inline-block; width:14px; height:14px; margin-right:6px; vertical-align:-2px; border:1px solid rgba(0,0,0,0.08); }}
     .legend .raw::before {{ background:var(--raw); }} .legend .denoise::before {{ background:var(--denoise); }} .legend .motion::before {{ background:var(--motion); }} .legend .final::before {{ background:var(--final); }}
     .kv-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin:14px 0 0; }}
     .kv-item {{ border:1px solid var(--border); padding:8px 10px; min-height:58px; background:#fff; }}
-    .kv-label {{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px; font-family:Arial, Helvetica, sans-serif; }}
-    .kv-value {{ font-size:14px; line-height:1.28; font-family:Arial, Helvetica, sans-serif; }}
+    .kv-label {{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px; font-family:{REPORT_FONT_CSS}; }}
+    .kv-value {{ font-size:14px; line-height:1.28; font-family:{REPORT_FONT_CSS}; }}
     .header-strip .kv-item {{ min-height:64px; }}
     .metric-hero {{ grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; }}
     .metric-hero .kv-item {{ min-height:84px; padding:12px 14px; }}
@@ -2074,16 +2084,16 @@ def _render_report_html(report_data: dict[str, Any], report_dir: Path, print_mod
     .metric-compact .kv-value {{ font-size:13px; }}
     .report-section {{ padding:16px 0 18px; border-bottom:1px solid var(--border); break-inside:avoid; page-break-inside:avoid; }}
     .section-header {{ margin-bottom:10px; }}
-    .section-kicker {{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; font-family:Arial, Helvetica, sans-serif; }}
+    .section-kicker {{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; font-family:{REPORT_FONT_CSS}; }}
     .section-header h2 {{ margin:4px 0 0; font-size:23px; line-height:1.12; font-weight:700; }}
     .panel-grid {{ display:grid; gap:10px; margin-top:10px; align-items:start; }} .grid-3 {{ grid-template-columns:repeat(3,minmax(0,1fr)); }} .grid-2 {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} .grid-1 {{ grid-template-columns:repeat(1,minmax(0,1fr)); }}
     .panel {{ margin:0; border:1px solid var(--border); padding:7px; position:relative; background:#ffffff; }}
     .panel img,.panel .panel-na {{ width:100%; display:block; background:#f7f7f7; }}
-    .panel-na {{ min-height:240px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-family:'Helvetica Neue',Arial,sans-serif; }}
-    .panel-label {{ position:absolute; top:9px; left:10px; font-family:Arial, Helvetica, sans-serif; font-weight:700; font-size:15px; background:rgba(255,255,255,0.95); padding:1px 6px; border:1px solid var(--border); }}
-    .panel-title {{ font-family:Arial, Helvetica, sans-serif; font-size:13px; font-weight:700; margin-top:7px; line-height:1.25; }}
-    .panel-note,.panel-source {{ font-family:Arial, Helvetica, sans-serif; font-size:11px; color:var(--muted); margin-top:3px; line-height:1.35; }}
-    .section-caption {{ margin-top:10px; font-size:12.5px; line-height:1.45; color:#1b1b1b; font-family:Arial, Helvetica, sans-serif; }}
+    .panel-na {{ min-height:240px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-family:{REPORT_FONT_CSS}; }}
+    .panel-label {{ position:absolute; top:9px; left:10px; font-family:{REPORT_FONT_CSS}; font-weight:700; font-size:15px; background:rgba(255,255,255,0.95); padding:1px 6px; border:1px solid var(--border); }}
+    .panel-title {{ font-family:{REPORT_FONT_CSS}; font-size:13px; font-weight:700; margin-top:7px; line-height:1.25; }}
+    .panel-note,.panel-source {{ font-family:{REPORT_FONT_CSS}; font-size:11px; color:var(--muted); margin-top:3px; line-height:1.35; }}
+    .section-caption {{ margin-top:10px; font-size:12.5px; line-height:1.45; color:#1b1b1b; font-family:{REPORT_FONT_CSS}; }}
     details.provenance-block {{ margin-top:10px; border:1px solid var(--border); padding:8px 10px; }}
     details.provenance-block summary {{ cursor:pointer; font-weight:700; }}
     .print-mode .report {{ width:100%; padding:7mm 6mm 9mm; }}
