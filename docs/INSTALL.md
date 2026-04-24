@@ -33,13 +33,36 @@ conda activate neumar
 
 This environment file is tuned for mirrored conda channels plus a pip-installed CUDA 12.1 PyTorch wheel, which helps avoid the flaky `nvidia` conda channel on some Windows setups.
 
+Important solver note:
+- `environment-neumar.yml` does not request conda-side `torchaudio`
+- if the solver reports `torchaudio` or another package that is absent from the environment file, check the current local YAML copy first
+- other common causes include hidden conda pins, injected defaults, stale solver caches, or a `libmamba`-specific solve issue
+
+Check with:
+
+```bash
+grep -nE 'torchaudio|torchvision|pytorch|cuda|python' environment-neumar.yml
+cat "$CONDA_PREFIX/conda-meta/pinned" 2>/dev/null
+conda config --show-sources
+conda config --show create_default_packages
+conda config --show pinned_packages
+```
+
+Then clear the cache and retry with the classic solver:
+
+```bash
+conda clean --index-cache --tarballs --packages -y
+CONDA_SOLVER=classic conda env create -f environment-neumar.yml
+```
+
 Linux notes:
 - the same `environment-neumar.yml` file is intended to work on Linux
 - if you are outside the default mirror region, replace the explicit mirror URLs with your preferred `conda-forge` / `pkgs/main` channels before creating the environment
+- the published environment files intentionally omit the Windows-only `pkgs/msys2` channel
 - after activation, a quick sanity check is:
 
 ```bash
-python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+python -c "import torch, cv2, skimage, tifffile; print(torch.__version__); print(torch.cuda.is_available())"
 ```
 
 On Windows, the published main environment and entry script apply two compatibility workarounds:

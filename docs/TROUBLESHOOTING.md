@@ -82,6 +82,40 @@ The main environment assumes an NVIDIA GPU-oriented setup. If `pytorch-cuda=12.1
 - or create a local derivative environment file for your hardware
 - on Linux outside the default mirror region, replace the explicit mirror URLs in the environment files with your preferred conda channels before retrying
 
+## Conda Solve Mentions torchaudio But The YAML Does Not
+
+If `conda env create -f environment-neumar.yml` fails with a solver error that mentions `torchaudio` or another package not present in the environment file, the problem is usually not the repository YAML itself.
+
+Check the following before editing the repository YAML:
+- confirm the current local `environment-neumar.yml` really is the file you intended to use
+- search the file itself for `torchaudio`, `torchvision`, `pytorch`, or other stale constraints
+- inspect hidden conda pins and global config
+- clear the solver cache and retry with the classic solver
+
+Check with:
+
+```bash
+grep -nE 'torchaudio|torchvision|pytorch|cuda|python' environment-neumar.yml
+cat "$CONDA_PREFIX/conda-meta/pinned" 2>/dev/null
+conda config --show-sources
+conda config --show create_default_packages
+conda config --show pinned_packages
+echo "$CONDA_PINNED_PACKAGES"
+echo "$CONDA_CREATE_DEFAULT_PACKAGES"
+```
+
+Then retry with:
+
+```bash
+conda clean --index-cache --tarballs --packages -y
+CONDA_SOLVER=classic \
+conda env create -f environment-neumar.yml
+```
+
+This repository's `environment-neumar.yml` intentionally installs the main PyTorch wheel through pip and does not require conda-side `torchaudio`.
+
+If Linux solving still looks fragile after the steps above, replace the explicit mirror URLs in the environment file with your preferred `conda-forge` / `pkgs/main` channels and retry.
+
 ## Linux cv2 Import Fails With libGL.so.1
 
 If the main environment imports fail on Linux with messages mentioning `libGL.so.1` or `libglib-2.0.so.0`, install the missing system packages:

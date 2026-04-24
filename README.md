@@ -91,6 +91,20 @@ conda activate neumar
 
 The published `neumar` environment uses mirrored conda channels for the scientific stack and installs the CUDA 12.1 PyTorch wheel through pip.
 
+If `conda env create -f environment-neumar.yml` fails while mentioning `torchaudio` or another package that does not appear in `environment-neumar.yml`, first confirm that your local `environment-neumar.yml` really matches the published one, then inspect hidden conda constraints and retry with a clean cache or the classic solver:
+
+```bash
+grep -nE 'torchaudio|torchvision|pytorch|cuda|python' environment-neumar.yml
+cat "$CONDA_PREFIX/conda-meta/pinned" 2>/dev/null
+conda config --show-sources
+conda config --show create_default_packages
+conda config --show pinned_packages
+conda clean --index-cache --tarballs --packages -y
+CONDA_SOLVER=classic conda env create -f environment-neumar.yml
+```
+
+The published environment files intentionally avoid the Windows-only `pkgs/msys2` channel. If your Linux machine still shows unstable solving behavior after the checks above, replace the explicit mirror URLs with your preferred `conda-forge` / `pkgs/main` channels and retry.
+
 Linux notes:
 - tested target: Ubuntu-like systems with Python 3.10 and an NVIDIA driver compatible with CUDA 12.x
 - if `cv2` later fails with `libGL.so.1` or `libgthread-2.0.so.0`, install:
@@ -101,6 +115,11 @@ sudo apt install -y libgl1 libglib2.0-0
 ```
 
 - if you are outside the default mirror region, you may replace the explicit mirror URLs in the environment files with your preferred `conda-forge` / `pkgs/main` channels before creating the environments
+- after activation, a minimal sanity check is:
+
+```bash
+python -c "import torch, cv2, skimage, tifffile; print(torch.__version__); print(torch.cuda.is_available())"
+```
 
 On Windows, the published main environment and entry script apply two compatibility workarounds:
 - set `KMP_DUPLICATE_LIB_OK=TRUE` to tolerate duplicate OpenMP runtimes from mixed scientific wheels
