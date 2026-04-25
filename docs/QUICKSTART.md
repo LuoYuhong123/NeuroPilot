@@ -27,7 +27,7 @@ python prepare_input_tiffs.py --input-dir /path/to/flat_tif_folder
 
 ## Repository Quick Demo
 
-The repository includes one small smoke-test movie under `demo_data/quick_demo/quick_demo.tif`.
+The repository includes one small smoke-test movie under `demo_data/quick_demo/quick_demo.tif`. The current bundle is an `80 x 448 x 448` center crop from `raw_LEC`, selected to reduce obvious blank borders in processed demo outputs while keeping runtime manageable.
 
 From the repository root, a minimal quick-demo run is:
 

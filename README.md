@@ -218,6 +218,8 @@ By default, the pipeline trains one shared denoise model per child folder using 
 This repository keeps one small quick demo in git for smoke testing:
 - `demo_data/quick_demo/quick_demo.tif`
 
+The current quick demo is an `80 x 448 x 448` center crop from `demo_data/raw_LEC/raw_LEC.tif`, chosen to preserve more field of view than the older 256x256 sample and reduce obvious blank borders after processing.
+
 You can run that bundled demo directly from the repository root with:
 
 ```bash

@@ -19,6 +19,13 @@ The repository keeps one small smoke-test movie in git:
 
 This file is intentionally kept below the normal GitHub repository single-file limit so users can clone the repository and run a minimal example immediately.
 
+Current selection details:
+- source movie: `raw_LEC/raw_LEC.tif`
+- extracted window: frames `440:520`, center crop `(x=32:480, y=32:480)`
+- final quick-demo shape: `80 x 448 x 448`
+- rationale: keep a larger field of view than the old 256x256 quick demo while reducing the risk of obvious blank registration borders in the processed outputs
+
+
 ## Release-Only Large Demo Movies
 
 The larger example movies are intended to be distributed as GitHub Release assets, not committed into git history:

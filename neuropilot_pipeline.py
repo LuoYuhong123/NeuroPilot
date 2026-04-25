@@ -536,6 +536,24 @@ def clamp_patch_to_data(
     return int(safe_x), int(safe_y), int(safe_t)
 
 
+def clamp_test_patch_to_data(
+    patch_xy: int,
+    patch_t: int,
+    datasets_path: str,
+) -> tuple[int, int]:
+    shape_thw = _normalize_shape_to_thw(get_first_tif_shape(datasets_path))
+    if shape_thw is None:
+        return int(patch_xy), int(patch_t)
+
+    whole_t, whole_y, whole_x = shape_thw
+    max_xy = max(2, min(int(whole_x), int(whole_y)) - 1)
+    max_t = max(2, int(whole_t) - 1)
+
+    safe_xy = _prefer_even(_clamp_int(patch_xy, 2, max_xy), 2, max_xy)
+    safe_t = _prefer_even(_clamp_int(patch_t, 2, max_t), 2, max_t)
+    return int(safe_xy), int(safe_t)
+
+
 def sanitize_train_params(params: dict, datasets_path: str) -> dict:
     sample_mode = str(params["sample_mode"]).strip().upper()
     n_epochs = _clamp_int(_coerce_int(params.get("n_epochs"), 30), 1, 300)
@@ -1186,6 +1204,18 @@ def run_one_folder(folder_name: str) -> None:
             ensure_dir(str(test_output_root))
             ensure_dir(str(demotion_root))
 
+            test_patch_xy, test_patch_t = clamp_test_patch_to_data(
+                patch_xy=int(PATCH_XY_TEST),
+                patch_t=int(PATCH_T_TEST),
+                datasets_path=str(state["current_input_dir"]),
+            )
+            if test_patch_xy != int(PATCH_XY_TEST) or test_patch_t != int(PATCH_T_TEST):
+                print(
+                    f"[DENOISE-PATCH] stack={state['raw_tif_name']} iter={iiii} "
+                    f"adjusted test patch from ({int(PATCH_XY_TEST)},{int(PATCH_T_TEST)}) "
+                    f"to ({test_patch_xy},{test_patch_t})"
+                )
+
             test_output_folder = f"{state['stack_tag']}_iter{iiii}"
             test_denoise_dir = test_output_root / f"{test_output_folder}_DeepCAD"
             denoise_stage_params = {
@@ -1194,8 +1224,8 @@ def run_one_folder(folder_name: str) -> None:
                 "denoise_model": str(test_deepcad_model),
                 "output_dir": str(test_output_root),
                 "output_folder": str(test_output_folder),
-                "patch_xy": int(PATCH_XY_TEST),
-                "patch_t": int(PATCH_T_TEST),
+                "patch_xy": int(test_patch_xy),
+                "patch_t": int(test_patch_t),
                 "overlap_factor": float(OVERLAP_FACTOR),
                 "gpu": str(GPU),
                 "num_workers": int(NUM_WORKERS),
@@ -1232,8 +1262,8 @@ def run_one_folder(folder_name: str) -> None:
                     denoise_model=test_deepcad_model,
                     output_dir=str(test_output_root),
                     output_folder=test_output_folder,
-                    patch_xy=PATCH_XY_TEST,
-                    patch_t=PATCH_T_TEST,
+                    patch_xy=test_patch_xy,
+                    patch_t=test_patch_t,
                     overlap_factor=OVERLAP_FACTOR,
                     gpu=GPU,
                     num_workers=NUM_WORKERS,
