@@ -173,6 +173,7 @@ Before running `--llm-mode apply` or `--llm-mode shadow`:
 - set an available GPU index in `.env` through `NEUROPILOT_GPU=0` or pass `--GPU 0` directly
 - you do not need to set `NEUROPILOT_PIPELINE_LLM_MODE` in `.env`
 - if `--llm-mode off` is used, the pipeline ignores those LLM runtime settings and does not call the advisor
+- if neither `--cell-data` nor `--non-cell-data` is passed, the published default is `cell-data`
 - for cell-data runs, keep the downstream environment installed and pass `--downstream-env` only if its name is not the default `suite2p`
 
 Minimal non-cell run:
@@ -260,7 +261,7 @@ The main entry accepts these user-facing parameters:
 - `--output-dir`: root folder where dataset-specific result folders will be written
 - `--subfolders`: optional dataset subset, written as `sample_a,sample_b` or `['sample_a','sample_b']`
 - `--llm-mode`: `off`, `shadow`, or `apply`
-- `--cell-data` / `--non-cell-data`: whether to enable downstream cell-style analysis
+- `--cell-data` / `--non-cell-data`: whether to enable downstream cell-style analysis; the published default is `cell-data`
 - `--GPU`: GPU index or comma-separated GPU indices, for example `0` or `0,1`
 - `--downstream-env`: optional downstream conda environment name for cell-data runs; default is `suite2p`
 

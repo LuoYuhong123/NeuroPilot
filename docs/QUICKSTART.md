@@ -111,5 +111,5 @@ By default:
 - all child folders are scanned if `--subfolders` is omitted
 - loose TIFF files directly under `--input-dir` should be preprocessed first
 - reports are generated as HTML, not PDF
-- downstream segmentation is skipped unless `--cell-data` is enabled
+- downstream segmentation is enabled unless `--non-cell-data` is used or `NEUROPILOT_IS_CELL_DATA=false` is set
 - even for the full two-environment workflow, the main command is run from `neumar`

@@ -329,7 +329,7 @@ ADVISOR_TIMEOUT_S = _env_float("LLM_ADVISOR_TIMEOUT_S", 20.0)
 # Dataset type switch:
 # - True: treat current input as cell-type imaging data and run downstream segmentation/trace extraction
 # - False: skip downstream cell segmentation/trace extraction and label the report accordingly
-IS_CELL_DATA = _env_bool("NEUROPILOT_IS_CELL_DATA", False)
+IS_CELL_DATA = _env_bool("NEUROPILOT_IS_CELL_DATA", True)
 CELL_DATASET_PROFILE = _env_text("NEUROPILOT_CELL_DATASET_PROFILE", "neuronal")
 NON_CELL_DATASET_PROFILE = _env_text("NEUROPILOT_NON_CELL_DATASET_PROFILE", "unknown")
 DATASET_PROFILE = CELL_DATASET_PROFILE if IS_CELL_DATA else NON_CELL_DATASET_PROFILE
