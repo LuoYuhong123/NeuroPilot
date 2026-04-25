@@ -18,7 +18,7 @@ python prepare_input_tiffs.py --input-dir /path/to/flat_tif_folder
 
 Check all of the following:
 - `--llm-mode` is not `off`
-- `OPENAI_API_KEY` is present in your shell or local `.env`
+- `OPENAI_API_KEY` is present in your shell, local `.env`, or local `.env.example`
 - if `--llm-mode shadow` or `--llm-mode apply` is used and `OPENAI_API_KEY` is present, the public snapshot should switch to live advisor mode automatically
 - you are reading the latest run output, not an older run directory
 

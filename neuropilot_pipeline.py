@@ -53,7 +53,7 @@ from utils import (
     safe_write_exception
 )
 from pipeline_metrics import compute_metrics_for_tif, compare_two_metrics
-from llm_advisor import get_llm_suggestion
+from llm_advisor import get_llm_suggestion, has_configured_api_key
 from downstream_pipeline import materialize_final_and_run_downstream
 from report_builder import build_deterministic_report
 
@@ -89,8 +89,9 @@ def _load_env_file(path: Path, *, override: bool = False) -> None:
 
 
 def _bootstrap_local_env() -> None:
-    # Only load .env for local private configuration.
+    # Load .env first, then .env.example as a local fallback convenience source.
     _load_env_file(ROOT_DIR / ".env", override=False)
+    _load_env_file(ROOT_DIR / ".env.example", override=False)
 
 
 _bootstrap_local_env()
@@ -669,7 +670,7 @@ def resolve_advisor_backend(pipeline_mode: str, configured_backend: str) -> str:
     if pipeline_mode == "off":
         return "off"
     backend = normalize_backend_mode(configured_backend)
-    if _has_nonempty_env("OPENAI_API_KEY"):
+    if has_configured_api_key(api_key=ADVISOR_API_KEY):
         return "live"
     return backend
 

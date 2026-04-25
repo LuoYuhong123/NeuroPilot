@@ -169,7 +169,7 @@ python neuropilot_pipeline.py \
 ```
 
 Before running `--llm-mode apply` or `--llm-mode shadow`:
-- copy `.env.example` to `.env`, then place a real `OPENAI_API_KEY` in `.env` or export it from your shell
+- place a real `OPENAI_API_KEY` in local `.env`, local `.env.example`, or your shell environment
 - set an available GPU index in `.env` through `NEUROPILOT_GPU=0` or pass `--GPU 0` directly
 - you do not need to set `NEUROPILOT_PIPELINE_LLM_MODE` in `.env`
 - if `--llm-mode off` is used, the pipeline ignores those LLM runtime settings and does not call the advisor

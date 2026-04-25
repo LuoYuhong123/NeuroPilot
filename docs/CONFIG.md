@@ -33,7 +33,7 @@ Instead:
 ## LLM Practical Behavior
 
 - if `--llm-mode off` is used, the pipeline does not call the advisor
-- if `--llm-mode shadow` or `--llm-mode apply` is used and `OPENAI_API_KEY` is available in local `.env` or the shell, the advisor switches to live mode automatically
+- if `--llm-mode shadow` or `--llm-mode apply` is used and a real `OPENAI_API_KEY` is available in local `.env`, local `.env.example`, or the shell, the advisor switches to live mode automatically
 - you do not need to set `NEUROPILOT_PIPELINE_LLM_MODE` in `.env` when the CLI already provides `--llm-mode`
 
 ## Downstream Practical Behavior

@@ -111,7 +111,7 @@ export NEUROPILOT_DOWNSTREAM_PYTHON=/full/path/to/python
 
 ## Local Configuration
 
-Copy `.env.example` to a local `.env` next to `neuropilot_pipeline.py` if you want private machine-specific overrides. The published `.env.example` file is a template only and is not loaded at runtime.
+For local machine-specific overrides, you may keep settings in `.env` next to `neuropilot_pipeline.py`. The runtime loads `.env` first and also accepts `.env.example` as a local fallback convenience source.
 
 Typical pattern:
 
@@ -120,9 +120,9 @@ NEUROPILOT_GPU=0
 OPENAI_API_KEY=...
 ```
 
-Linux users normally store the same values in `.env` or export them from the shell before running the pipeline.
+Linux users normally store the same values in `.env`, `.env.example`, or export them from the shell before running the pipeline.
 
-When `--llm-mode shadow` or `--llm-mode apply` is passed on the command line, a non-empty `OPENAI_API_KEY` in local `.env` or the shell is enough to let the advisor use the live backend automatically.
+When `--llm-mode shadow` or `--llm-mode apply` is passed on the command line, a real `OPENAI_API_KEY` in local `.env`, local `.env.example`, or the shell is enough to let the advisor use the live backend automatically.
 
 The command-line flag `--GPU` overrides the default GPU selection from `.env`.
 

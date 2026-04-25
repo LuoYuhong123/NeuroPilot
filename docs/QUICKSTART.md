@@ -73,7 +73,7 @@ python neuropilot_pipeline.py \
 ```
 
 Before using `--llm-mode shadow` or `--llm-mode apply`:
-- copy `.env.example` to `.env`, then set a real `OPENAI_API_KEY` in `.env` or your shell
+- set a real `OPENAI_API_KEY` in local `.env`, local `.env.example`, or your shell
 - set a usable GPU index in `.env` with `NEUROPILOT_GPU=0` or pass `--GPU 0`
 - no extra `.env` LLM mode variable is required
 - if your downstream cell-data environment is not named `suite2p`, pass `--downstream-env your_env_name`

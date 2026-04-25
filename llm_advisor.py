@@ -18,7 +18,14 @@ DEFAULT_BATCH_SIZE_RANGE = (1, 16)
 DEFAULT_MODEL = "gpt-4.1-mini"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 LOCAL_CONFIG_CANDIDATES = ("advisor_config.json", "configs/advisor_config.json")
-ENV_FILE_CANDIDATES = (".env",)
+ENV_FILE_CANDIDATES = (".env", ".env.example")
+API_KEY_PLACEHOLDER_MARKERS = (
+    "your_openai_api_key",
+    "replace_me",
+    "example",
+    "<api_key>",
+    "sk-xxxx",
+)
 
 
 def _load_env_file(path: Path, *, override: bool = False) -> None:
@@ -117,6 +124,27 @@ def _load_local_config() -> tuple[dict[str, Any], str | None]:
             except Exception:
                 continue
     return {}, None
+
+
+def _has_real_api_key_candidate(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    return not any(marker in lowered for marker in API_KEY_PLACEHOLDER_MARKERS)
+
+
+def has_configured_api_key(api_key: str | None = None, api_key_env: str = "OPENAI_API_KEY") -> bool:
+    explicit_api_key = api_key if _has_real_api_key_candidate(api_key) else None
+    local_cfg, _ = _load_local_config()
+    cfg_api_key = local_cfg.get("api_key") or local_cfg.get("ADVISOR_API_KEY")
+    env_api_key = os.getenv(api_key_env)
+    return any(
+        _has_real_api_key_candidate(candidate)
+        for candidate in (explicit_api_key, cfg_api_key, env_api_key)
+    )
 
 
 def _normalize_base_url(base_url: str) -> str:
