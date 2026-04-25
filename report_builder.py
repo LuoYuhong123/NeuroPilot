@@ -21,6 +21,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Rectangle
 import numpy as np
@@ -69,18 +70,27 @@ MODALITY_CMAPS = {
     "3p": plt.get_cmap("afmhot"),
 }
 
-REPORT_FONT_FAMILY = [
-    "DejaVu Sans",
-    "Liberation Sans",
-    "Arial",
-    "Helvetica",
-    "sans-serif",
-]
-REPORT_FONT_CSS = "'DejaVu Sans','Liberation Sans','Helvetica Neue',Arial,Helvetica,sans-serif"
+def _available_report_font_stack() -> list[str]:
+    preferred = ["DejaVu Sans", "Liberation Sans", "Arial", "Helvetica"]
+    try:
+        available = {entry.name for entry in font_manager.fontManager.ttflist}
+    except Exception:
+        available = set()
+    chosen = [name for name in preferred if name in available]
+    if not chosen:
+        chosen = ["DejaVu Sans"]
+    return chosen
+
+
+REPORT_FONT_FAMILY = _available_report_font_stack()
+REPORT_FONT_PRIMARY = REPORT_FONT_FAMILY[0]
+REPORT_FONT_CSS = ",".join(
+    [f"'{name}'" if " " in name else name for name in REPORT_FONT_FAMILY] + ["sans-serif"]
+)
 
 plt.rcParams.update(
     {
-        "font.family": REPORT_FONT_FAMILY,
+        "font.family": [REPORT_FONT_PRIMARY],
         "font.sans-serif": REPORT_FONT_FAMILY,
         "font.size": 9,
         "axes.titlesize": 10,
