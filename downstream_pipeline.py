@@ -115,6 +115,82 @@ def _resolve_external_python(runner_cfg: dict | None) -> Path:
     )
 
 
+def _write_downstream_placeholder_outputs(
+    output_dir: str | Path,
+    dataset_profile: str,
+    cfg: dict,
+    raw_stack_path: str | Path,
+    final_stack_path: str | Path,
+    backend_status: dict,
+    execution_status: str,
+    reason: str,
+    summary_notes: list[str],
+    summary_unavailable_fields: list[str],
+    comparison_notes: list[str],
+    comparison_unavailable_fields: list[str],
+) -> dict:
+    output_dir = Path(output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    raw_stack_path = Path(raw_stack_path).resolve()
+    final_stack_path = Path(final_stack_path).resolve()
+
+    backend_status_path = output_dir / "backend_status.json"
+    run_status_path = output_dir / "run_status.json"
+    summary_path = output_dir / "summary.json"
+    cmp_path = output_dir / "downstream_comparison.json"
+    config_snapshot_path = output_dir / "downstream_config_snapshot.json"
+
+    backend_payload = dict(backend_status or {})
+    backend_payload.setdefault("available", False)
+    backend_payload.setdefault("status", "placeholder")
+    backend_payload["reason"] = str(reason)
+
+    _write_json(backend_status_path, backend_payload)
+    _write_json(config_snapshot_path, cfg)
+    _write_json(
+        run_status_path,
+        {
+            "dataset_profile": dataset_profile,
+            "execution_status": execution_status,
+            "reason": str(reason),
+            "raw_stack_path": str(raw_stack_path),
+            "final_stack_path": str(final_stack_path),
+            "final_stack_source": "final/final_stack.tif",
+            "suite2p_registration_used": None,
+            "config_snapshot_path": str(config_snapshot_path),
+        },
+    )
+    _write_json(
+        summary_path,
+        {
+            "dataset_profile": dataset_profile,
+            "backend_name": cfg["backend_name"],
+            "raw_executed": False,
+            "final_executed": False,
+            "suite2p_counts": {},
+            "notes": list(summary_notes),
+            "unavailable_fields": list(summary_unavailable_fields),
+        },
+    )
+    _write_json(
+        cmp_path,
+        {
+            "dataset_profile": dataset_profile,
+            "backend_name": cfg["backend_name"],
+            "executed_on_raw": False,
+            "executed_on_final": False,
+            "notes": list(comparison_notes),
+            "unavailable_fields": list(comparison_unavailable_fields),
+        },
+    )
+    return {
+        "backend_status_path": str(backend_status_path),
+        "run_status_path": str(run_status_path),
+        "summary_path": str(summary_path),
+        "comparison_path": str(cmp_path),
+    }
+
+
 def _extract_counts(seg: dict | None, sel: dict | None) -> dict:
     seg_counts = (seg or {}).get("counts", {})
     sel_counts = (sel or {}).get("counts", {})
@@ -862,50 +938,20 @@ def run_downstream_analysis(
     }
 
     if str(dataset_profile).lower() != "neuronal":
-        backend_status["status"] = "placeholder"
-        backend_status["available"] = False
-        _write_json(backend_status_path, backend_status)
-        run_status = {
-            "dataset_profile": dataset_profile,
-            "execution_status": "skipped",
-            "reason": "dataset_profile_not_neuronal",
-            "raw_stack_path": str(raw_stack_path),
-            "final_stack_path": str(final_stack_path),
-            "final_stack_source": "final/final_stack.tif",
-            "suite2p_registration_used": None,
-            "config_snapshot_path": str(output_dir / "downstream_config_snapshot.json"),
-        }
-        _write_json(output_dir / "downstream_config_snapshot.json", cfg)
-        _write_json(run_status_path, run_status)
-        _write_json(
-            summary_path,
-            {
-                "dataset_profile": dataset_profile,
-                "backend_name": cfg["backend_name"],
-                "raw_executed": False,
-                "final_executed": False,
-                "suite2p_counts": {},
-                "notes": ["Downstream skipped for non-neuronal profile."],
-                "unavailable_fields": ["suite2p outputs", "roi selection", "trace parse"],
-            },
+        return _write_downstream_placeholder_outputs(
+            output_dir=output_dir,
+            dataset_profile=dataset_profile,
+            cfg=cfg,
+            raw_stack_path=raw_stack_path,
+            final_stack_path=final_stack_path,
+            backend_status=backend_status,
+            execution_status="skipped",
+            reason="dataset_profile_not_neuronal",
+            summary_notes=["Downstream skipped for non-neuronal profile."],
+            summary_unavailable_fields=["suite2p outputs", "roi selection", "trace parse"],
+            comparison_notes=["Skipped due to dataset profile."],
+            comparison_unavailable_fields=["roi_count_raw", "roi_count_final", "trace summaries"],
         )
-        _write_json(
-            cmp_path,
-            {
-                "dataset_profile": dataset_profile,
-                "backend_name": cfg["backend_name"],
-                "executed_on_raw": False,
-                "executed_on_final": False,
-                "notes": ["Skipped due to dataset profile."],
-                "unavailable_fields": ["roi_count_raw", "roi_count_final", "trace summaries"],
-            },
-        )
-        return {
-            "backend_status_path": str(backend_status_path),
-            "run_status_path": str(run_status_path),
-            "summary_path": str(summary_path),
-            "comparison_path": str(cmp_path),
-        }
 
     try:
         from suite2p_segmentation import run_suite2p_segmentation
@@ -916,50 +962,20 @@ def run_downstream_analysis(
         backend_status["available"] = False
         backend_status["status"] = "placeholder"
         backend_status["reason"] = f"import_failed: {type(exc).__name__}: {exc}"
-        _write_json(backend_status_path, backend_status)
-        _write_json(output_dir / "downstream_config_snapshot.json", cfg)
-        _write_json(
-            run_status_path,
-            {
-                "dataset_profile": dataset_profile,
-                "execution_status": "placeholder",
-                "reason": backend_status["reason"],
-                "raw_stack_path": str(raw_stack_path),
-                "final_stack_path": str(final_stack_path),
-                "final_stack_source": "final/final_stack.tif",
-                "suite2p_registration_used": None,
-                "config_snapshot_path": str(output_dir / "downstream_config_snapshot.json"),
-            },
+        return _write_downstream_placeholder_outputs(
+            output_dir=output_dir,
+            dataset_profile=dataset_profile,
+            cfg=cfg,
+            raw_stack_path=raw_stack_path,
+            final_stack_path=final_stack_path,
+            backend_status=backend_status,
+            execution_status="placeholder",
+            reason=backend_status["reason"],
+            summary_notes=[backend_status["reason"]],
+            summary_unavailable_fields=["suite2p", "selection", "trace parse"],
+            comparison_notes=[backend_status["reason"]],
+            comparison_unavailable_fields=["roi counts", "trace summaries"],
         )
-        _write_json(
-            summary_path,
-            {
-                "dataset_profile": dataset_profile,
-                "backend_name": cfg["backend_name"],
-                "raw_executed": False,
-                "final_executed": False,
-                "suite2p_counts": {},
-                "notes": [backend_status["reason"]],
-                "unavailable_fields": ["suite2p", "selection", "trace parse"],
-            },
-        )
-        _write_json(
-            cmp_path,
-            {
-                "dataset_profile": dataset_profile,
-                "backend_name": cfg["backend_name"],
-                "executed_on_raw": False,
-                "executed_on_final": False,
-                "notes": [backend_status["reason"]],
-                "unavailable_fields": ["roi counts", "trace summaries"],
-            },
-        )
-        return {
-            "backend_status_path": str(backend_status_path),
-            "run_status_path": str(run_status_path),
-            "summary_path": str(summary_path),
-            "comparison_path": str(cmp_path),
-        }
 
     _write_json(backend_status_path, backend_status)
     _write_json(output_dir / "downstream_config_snapshot.json", cfg)
@@ -1122,51 +1138,84 @@ def materialize_final_and_run_downstream(
             config=downstream_config,
         )
     elif runner_mode == "external_python":
-        runner_python = _resolve_external_python(runner_cfg)
-        runner_log_path = segmentation_dir / "downstream_subprocess.log"
-        runner_cfg_path = segmentation_dir / "downstream_subprocess_config.json"
-        runner_result_path = segmentation_dir / "downstream_subprocess_result.json"
-        _write_json(runner_cfg_path, downstream_config)
-        cmd = [
-            str(runner_python),
-            str(Path(__file__).resolve()),
-            "--raw-stack-path",
-            str(Path(raw_stack_path).resolve()),
-            "--final-stack-path",
-            str(final_stack_path),
-            "--output-dir",
-            str(segmentation_dir),
-            "--dataset-profile",
-            str(dataset_profile),
-            "--config-json",
-            str(runner_cfg_path),
-            "--result-json-path",
-            str(runner_result_path),
-        ]
-        segmentation_dir.mkdir(parents=True, exist_ok=True)
-        with open(runner_log_path, "w", encoding="utf-8") as log_f:
-            proc = subprocess.run(
-                cmd,
-                stdout=log_f,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-                cwd=str(Path(__file__).resolve().parent),
+        external_backend_status = {
+            "backend_name": str(downstream_config.get("backend_name") or "suite2p_step0_step1_adapter"),
+            "backend_version_or_source": str(downstream_config.get("backend_version_or_source") or "local_repo"),
+            "source_files_used": list(
+                downstream_config.get("source_files_used")
+                or ["suite2p_segmentation.py", "roi_selection_artifacts.py"]
+            ),
+            "import_mode": "external_python_subprocess",
+            "dataset_profile": str(dataset_profile),
+            "available": False,
+            "status": "placeholder",
+        }
+        try:
+            runner_python = _resolve_external_python(runner_cfg)
+        except FileNotFoundError as exc:
+            reason = f"external_python_unavailable: {type(exc).__name__}: {exc}"
+            downstream_out = _write_downstream_placeholder_outputs(
+                output_dir=segmentation_dir,
+                dataset_profile=dataset_profile,
+                cfg=downstream_config,
+                raw_stack_path=raw_stack_path,
+                final_stack_path=final_stack_path,
+                backend_status=external_backend_status,
+                execution_status="placeholder",
+                reason=reason,
+                summary_notes=[reason],
+                summary_unavailable_fields=["suite2p", "selection", "trace parse"],
+                comparison_notes=[reason],
+                comparison_unavailable_fields=["roi counts", "trace summaries"],
             )
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"External downstream subprocess failed with code {proc.returncode}. "
-                f"See log: {runner_log_path}"
-            )
-        if not runner_result_path.exists():
-            raise RuntimeError(
-                f"External downstream subprocess completed but result json was not created: {runner_result_path}"
-            )
-        with open(runner_result_path, "r", encoding="utf-8") as f:
-            downstream_out = json.load(f)
-        downstream_out["downstream_subprocess_log_path"] = str(runner_log_path)
-        downstream_out["downstream_subprocess_result_path"] = str(runner_result_path)
-        downstream_out["downstream_subprocess_python"] = str(runner_python)
+            downstream_out["downstream_subprocess_log_path"] = None
+            downstream_out["downstream_subprocess_result_path"] = None
+            downstream_out["downstream_subprocess_python"] = None
+        else:
+            runner_log_path = segmentation_dir / "downstream_subprocess.log"
+            runner_cfg_path = segmentation_dir / "downstream_subprocess_config.json"
+            runner_result_path = segmentation_dir / "downstream_subprocess_result.json"
+            _write_json(runner_cfg_path, downstream_config)
+            cmd = [
+                str(runner_python),
+                str(Path(__file__).resolve()),
+                "--raw-stack-path",
+                str(Path(raw_stack_path).resolve()),
+                "--final-stack-path",
+                str(final_stack_path),
+                "--output-dir",
+                str(segmentation_dir),
+                "--dataset-profile",
+                str(dataset_profile),
+                "--config-json",
+                str(runner_cfg_path),
+                "--result-json-path",
+                str(runner_result_path),
+            ]
+            segmentation_dir.mkdir(parents=True, exist_ok=True)
+            with open(runner_log_path, "w", encoding="utf-8") as log_f:
+                proc = subprocess.run(
+                    cmd,
+                    stdout=log_f,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    check=False,
+                    cwd=str(Path(__file__).resolve().parent),
+                )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"External downstream subprocess failed with code {proc.returncode}. "
+                    f"See log: {runner_log_path}"
+                )
+            if not runner_result_path.exists():
+                raise RuntimeError(
+                    f"External downstream subprocess completed but result json was not created: {runner_result_path}"
+                )
+            with open(runner_result_path, "r", encoding="utf-8") as f:
+                downstream_out = json.load(f)
+            downstream_out["downstream_subprocess_log_path"] = str(runner_log_path)
+            downstream_out["downstream_subprocess_result_path"] = str(runner_result_path)
+            downstream_out["downstream_subprocess_python"] = str(runner_python)
     else:
         downstream_out = run_downstream_analysis(
             raw_stack_path=raw_stack_path,

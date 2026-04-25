@@ -28,6 +28,7 @@ For cell-data runs:
 - confirm the second downstream environment is installed
 - if it is not named `suite2p`, pass `--downstream-env your_env_name`
 - if automatic environment resolution still fails, set `NEUROPILOT_DOWNSTREAM_PYTHON` to an explicit interpreter path
+- if the published pipeline still cannot resolve that interpreter, it now writes explicit downstream `placeholder` status artifacts instead of aborting the whole run; install the env later if you want real segmentation outputs
 
 For non-cell runs:
 - `--non-cell-data` should complete without the downstream segmentation environment
