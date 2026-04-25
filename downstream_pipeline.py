@@ -67,6 +67,65 @@ def _materialize_final_stack(final_stack_source: Path, final_dir: Path, source_s
     return final_stack_path, sidecar_path
 
 
+def _default_downstream_config() -> dict:
+    return {
+        "run_raw": True,
+        "source_files_used": ["suite2p_segmentation.py", "roi_selection_artifacts.py"],
+        "backend_name": "suite2p_step0_step1_adapter",
+        "backend_version_or_source": "local_repo",
+        "runner_config": {
+            "mode": "direct",
+            "env_name": None,
+            "python_executable": None,
+        },
+        "segmentation_config": {},
+        "selection_config": {
+            "analysis_use_top_percent": False,
+            "asset_prefix": "final",
+        },
+        "paired_trace_config": {
+            "enabled": True,
+            "top_n_final_rois": 5,
+        },
+    }
+
+
+def _normalize_downstream_config(config: dict | None) -> dict:
+    cfg = _default_downstream_config()
+    override = dict(config or {})
+    for key, value in override.items():
+        if key in {"runner_config", "segmentation_config", "selection_config", "paired_trace_config"}:
+            merged = dict(cfg.get(key, {}) or {})
+            if isinstance(value, dict):
+                merged.update(value)
+                cfg[key] = merged
+            elif value is not None:
+                cfg[key] = value
+            continue
+        cfg[key] = value
+
+    cfg["backend_name"] = str(cfg.get("backend_name") or "suite2p_step0_step1_adapter")
+    cfg["backend_version_or_source"] = str(cfg.get("backend_version_or_source") or "local_repo")
+    cfg["source_files_used"] = list(
+        cfg.get("source_files_used") or ["suite2p_segmentation.py", "roi_selection_artifacts.py"]
+    )
+    runner_cfg = dict(cfg.get("runner_config", {}) or {})
+    runner_cfg["mode"] = str(runner_cfg.get("mode") or "direct").strip().lower()
+    runner_cfg["env_name"] = str(runner_cfg.get("env_name") or "").strip() or None
+    runner_python = runner_cfg.get("python_executable")
+    runner_cfg["python_executable"] = str(runner_python).strip() if runner_python else None
+    cfg["runner_config"] = runner_cfg
+    return cfg
+
+
+def _python_candidates_for_env_root(env_root: Path, os_name: str | None = None) -> list[Path]:
+    env_root = Path(env_root).expanduser()
+    platform_name = os_name or os.name
+    if platform_name == "nt":
+        return [env_root / "python.exe", env_root / "Scripts" / "python.exe"]
+    return [env_root / "bin" / "python", env_root / "python"]
+
+
 def _resolve_external_python(runner_cfg: dict | None) -> Path:
     runner_cfg = dict(runner_cfg or {})
     python_executable = runner_cfg.get("python_executable")
@@ -80,25 +139,35 @@ def _resolve_external_python(runner_cfg: dict | None) -> Path:
     if not env_name:
         raise ValueError("runner_config requires either python_executable or env_name")
 
-    exe_name = "python.exe" if os.name == "nt" else "python"
     candidates: list[Path] = []
 
     conda_prefix = os.environ.get("CONDA_PREFIX")
     if conda_prefix:
-        candidates.append(Path(conda_prefix).resolve().parent / env_name / exe_name)
+        candidates.extend(_python_candidates_for_env_root(Path(conda_prefix).resolve().parent / env_name))
 
     conda_exe = os.environ.get("CONDA_EXE")
     if conda_exe:
-        candidates.append(Path(conda_exe).resolve().parents[1] / "envs" / env_name / exe_name)
+        candidates.extend(_python_candidates_for_env_root(Path(conda_exe).resolve().parents[1] / "envs" / env_name))
 
     current_python = Path(sys.executable).resolve()
-    if current_python.parent.name.lower() == env_name.lower():
+    current_python_parent = current_python.parent
+    current_env_root = (
+        current_python_parent.parent
+        if current_python_parent.name.lower() in {"bin", "scripts"}
+        else current_python_parent
+    )
+    if current_env_root.name.lower() == env_name.lower():
         candidates.append(current_python)
-    elif current_python.parent.parent.name.lower() == "envs":
-        candidates.append(current_python.parent.parent / env_name / exe_name)
+    elif current_env_root.parent.name.lower() == "envs":
+        candidates.extend(_python_candidates_for_env_root(current_env_root.parent / env_name))
 
-    home_conda = Path.home() / "anaconda3" / "envs" / env_name / exe_name
-    candidates.append(home_conda)
+    for home_conda_dir in ("anaconda3", "miniconda3", "miniforge3", "mambaforge"):
+        candidates.extend(_python_candidates_for_env_root(Path.home() / home_conda_dir / "envs" / env_name))
+
+    conda_on_path = shutil.which("conda")
+    if conda_on_path:
+        conda_root = Path(conda_on_path).expanduser().resolve().parent.parent
+        candidates.extend(_python_candidates_for_env_root(conda_root / "envs" / env_name))
 
     seen: set[str] = set()
     for cand in candidates:
@@ -164,7 +233,7 @@ def _write_downstream_placeholder_outputs(
         summary_path,
         {
             "dataset_profile": dataset_profile,
-            "backend_name": cfg["backend_name"],
+            "backend_name": str(cfg.get("backend_name") or "suite2p_step0_step1_adapter"),
             "raw_executed": False,
             "final_executed": False,
             "suite2p_counts": {},
@@ -176,7 +245,7 @@ def _write_downstream_placeholder_outputs(
         cmp_path,
         {
             "dataset_profile": dataset_profile,
-            "backend_name": cfg["backend_name"],
+            "backend_name": str(cfg.get("backend_name") or "suite2p_step0_step1_adapter"),
             "executed_on_raw": False,
             "executed_on_final": False,
             "notes": list(comparison_notes),
@@ -899,23 +968,7 @@ def run_downstream_analysis(
     dataset_profile: str,
     config: dict | None = None,
 ) -> dict:
-    cfg = {
-        "run_raw": True,
-        "source_files_used": ["suite2p_segmentation.py", "roi_selection_artifacts.py"],
-        "backend_name": "suite2p_step0_step1_adapter",
-        "backend_version_or_source": "local_repo",
-        "segmentation_config": {},
-        "selection_config": {
-            "analysis_use_top_percent": False,
-            "asset_prefix": "final",
-        },
-        "paired_trace_config": {
-            "enabled": True,
-            "top_n_final_rois": 5,
-        },
-    }
-    if config:
-        cfg.update(config)
+    cfg = _normalize_downstream_config(config)
 
     raw_stack_path = Path(raw_stack_path).resolve()
     final_stack_path = Path(final_stack_path).resolve()
@@ -1118,7 +1171,7 @@ def materialize_final_and_run_downstream(
     output_root = Path(output_root).resolve()
     final_dir = output_root / "final"
     segmentation_dir = output_root / "segmentation"
-    downstream_config = dict(downstream_config or {})
+    downstream_config = _normalize_downstream_config(downstream_config)
     final_stack_path, sidecar_path = _materialize_final_stack(
         final_stack_source=Path(final_stack_source_path).resolve(),
         final_dir=final_dir,
