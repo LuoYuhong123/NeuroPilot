@@ -204,6 +204,16 @@ def compare_two_metrics(raw_metrics: dict[str, Any], final_metrics: dict[str, An
                 if (raw_motion["motion_p95_px"] is None or final_motion["motion_p95_px"] is None)
                 else float(final_motion["motion_p95_px"] - raw_motion["motion_p95_px"])
             ),
+            "delta_jitter_mean_px": (
+                None
+                if (raw_motion["jitter_mean_px"] is None or final_motion["jitter_mean_px"] is None)
+                else float(final_motion["jitter_mean_px"] - raw_motion["jitter_mean_px"])
+            ),
+            "delta_jitter_p95_px": (
+                None
+                if (raw_motion["jitter_p95_px"] is None or final_motion["jitter_p95_px"] is None)
+                else float(final_motion["jitter_p95_px"] - raw_motion["jitter_p95_px"])
+            ),
         },
         "artifact_paths": {
             "raw_artifacts": raw_metrics.get("artifacts", {}),

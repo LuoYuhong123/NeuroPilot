@@ -77,6 +77,7 @@ Main environment responsibilities:
 - input metrics and comparisons
 - LLM advisor integration
 - deterministic HTML report generation
+- local browser UI launcher through `neuropilot_local_ui.py`
 
 ## Optional Suite2p Environment
 
@@ -139,6 +140,28 @@ Expected report artifacts:
 - `report/report_manifest.json`
 
 PDF export is disabled by default and is not required for the published workflow.
+
+## Local Browser UI
+
+The repository also includes a local-only browser UI:
+
+```bash
+python neuropilot_local_ui.py --open-browser
+```
+
+Default address:
+
+```text
+http://127.0.0.1:8008
+```
+
+The UI:
+- validates that `input-dir` uses the expected dataset-subfolder layout
+- lets the user set the main environment name, downstream environment name, GPU, subfolders, and LLM mode
+- launches the pipeline through the selected main conda environment
+- scans `output-dir` and embeds generated `report.html` files in the browser
+
+See [LOCAL_UI.md](LOCAL_UI.md) for the full local-UI workflow.
 
 ## Bundled And Excluded Weights
 

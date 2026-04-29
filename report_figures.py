@@ -70,25 +70,29 @@ def save_motion_curve_png(
 
     if raw_shifts_npy is not None and Path(raw_shifts_npy).exists():
         raw_shifts = np.load(str(raw_shifts_npy))
-        raw_mag = np.sqrt(raw_shifts[:, 0] ** 2 + raw_shifts[:, 1] ** 2)
-        ax.plot(raw_mag, label="raw", linewidth=1.2)
+        raw_dx = raw_shifts[:, 0]
+        raw_dy = raw_shifts[:, 1]
+        raw_curve = np.hypot(np.diff(raw_dx, prepend=raw_dx[0]), np.diff(raw_dy, prepend=raw_dy[0]))
+        ax.plot(raw_curve, label="raw", linewidth=1.2)
         has_curve = True
 
     if final_shifts_npy is not None and Path(final_shifts_npy).exists():
         final_shifts = np.load(str(final_shifts_npy))
-        final_mag = np.sqrt(final_shifts[:, 0] ** 2 + final_shifts[:, 1] ** 2)
-        ax.plot(final_mag, label="final", linewidth=1.2)
+        final_dx = final_shifts[:, 0]
+        final_dy = final_shifts[:, 1]
+        final_curve = np.hypot(np.diff(final_dx, prepend=final_dx[0]), np.diff(final_dy, prepend=final_dy[0]))
+        ax.plot(final_curve, label="final", linewidth=1.2)
         has_curve = True
 
     if has_curve:
         ax.legend(loc="upper right")
-        ax.set_ylabel("Shift magnitude (px)")
+        ax.set_ylabel("Residual jitter (px)")
         ax.set_xlabel("Frame index")
     else:
         ax.text(0.5, 0.5, "No motion shift curves available", ha="center", va="center")
         ax.set_axis_off()
 
-    ax.set_title("Rigid Motion Curve")
+    ax.set_title("Residual Rigid Jitter Curve")
     ax.grid(True, alpha=0.25)
     fig.tight_layout()
     fig.savefig(str(output_png), dpi=120)

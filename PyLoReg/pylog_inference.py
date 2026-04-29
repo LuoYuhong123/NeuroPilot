@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
+import io
 import hashlib
 import numpy as np
 import tifffile as tiff
@@ -11,10 +13,38 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tqdm import tqdm
+from tqdm import tqdm as _tqdm
 from tifffile import TiffWriter
 
 from PyLoReg.PyLoRegNet.PyLoRegNet import PyLoRegNet
+
+
+def _tqdm_stream_supports_live_updates(stream) -> bool:
+    if stream is None:
+        return False
+    try:
+        is_tty = bool(stream.isatty())
+    except Exception:
+        return False
+    if not is_tty:
+        return False
+    try:
+        stream.fileno()
+    except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
+        return False
+    return True
+
+
+def tqdm(*args, **kwargs):
+    stream = kwargs.get("file", sys.stderr)
+    kwargs.setdefault("disable", not _tqdm_stream_supports_live_updates(stream))
+    try:
+        return _tqdm(*args, **kwargs)
+    except (OSError, ValueError):
+        iterable = args[0] if args else None
+        if iterable is not None:
+            return iterable
+        raise
 
 
 # =========================================================
@@ -712,7 +742,6 @@ def demotion_PyLoReg_infer2stack_less_save_acc_v3_2(
     import numpy as np
     import tifffile as tiff
     from pathlib import Path
-    from tqdm import tqdm
 
     import torch
     import torch.nn as nn
@@ -1210,7 +1239,6 @@ def demotion_PyLoReg_infer2stack_less_save_acc_v3(
     import numpy as np
     import tifffile as tiff
     from pathlib import Path
-    from tqdm import tqdm
 
     import torch
     import torch.nn as nn

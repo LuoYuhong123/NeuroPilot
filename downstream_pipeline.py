@@ -45,6 +45,18 @@ def _summary_arr(x: np.ndarray | None) -> dict[str, Any]:
     }
 
 
+def _safe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(out):
+        return None
+    return out
+
+
 def _fingerprint(payload: dict) -> str:
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -70,7 +82,7 @@ def _materialize_final_stack(final_stack_source: Path, final_dir: Path, source_s
 def _default_downstream_config() -> dict:
     return {
         "run_raw": True,
-        "source_files_used": ["suite2p_segmentation.py", "roi_selection_artifacts.py"],
+        "source_files_used": ["suite2p_segmentation.py", "roi_selection_artifacts.py", "presegmentation_profile.py"],
         "backend_name": "suite2p_step0_step1_adapter",
         "backend_version_or_source": "local_repo",
         "runner_config": {
@@ -79,6 +91,14 @@ def _default_downstream_config() -> dict:
             "python_executable": None,
         },
         "segmentation_config": {},
+        "presegmentation_config": {
+            "enabled": True,
+            "target_mode": "soma",
+            "pixel_size_um": None,
+            "fps_hz": None,
+            "norm_p_low": 5.0,
+            "norm_p_high": 99.5,
+        },
         "selection_config": {
             "analysis_use_top_percent": False,
             "asset_prefix": "final",
@@ -94,7 +114,7 @@ def _normalize_downstream_config(config: dict | None) -> dict:
     cfg = _default_downstream_config()
     override = dict(config or {})
     for key, value in override.items():
-        if key in {"runner_config", "segmentation_config", "selection_config", "paired_trace_config"}:
+        if key in {"runner_config", "segmentation_config", "presegmentation_config", "selection_config", "paired_trace_config"}:
             merged = dict(cfg.get(key, {}) or {})
             if isinstance(value, dict):
                 merged.update(value)
@@ -107,7 +127,7 @@ def _normalize_downstream_config(config: dict | None) -> dict:
     cfg["backend_name"] = str(cfg.get("backend_name") or "suite2p_step0_step1_adapter")
     cfg["backend_version_or_source"] = str(cfg.get("backend_version_or_source") or "local_repo")
     cfg["source_files_used"] = list(
-        cfg.get("source_files_used") or ["suite2p_segmentation.py", "roi_selection_artifacts.py"]
+        cfg.get("source_files_used") or ["suite2p_segmentation.py", "roi_selection_artifacts.py", "presegmentation_profile.py"]
     )
     runner_cfg = dict(cfg.get("runner_config", {}) or {})
     runner_cfg["mode"] = str(runner_cfg.get("mode") or "direct").strip().lower()
@@ -115,6 +135,10 @@ def _normalize_downstream_config(config: dict | None) -> dict:
     runner_python = runner_cfg.get("python_executable")
     runner_cfg["python_executable"] = str(runner_python).strip() if runner_python else None
     cfg["runner_config"] = runner_cfg
+    preseg_cfg = dict(cfg.get("presegmentation_config", {}) or {})
+    preseg_cfg["enabled"] = bool(preseg_cfg.get("enabled", True))
+    preseg_cfg["target_mode"] = str(preseg_cfg.get("target_mode") or "soma").strip().lower()
+    cfg["presegmentation_config"] = preseg_cfg
     return cfg
 
 
@@ -207,6 +231,8 @@ def _write_downstream_placeholder_outputs(
     run_status_path = output_dir / "run_status.json"
     summary_path = output_dir / "summary.json"
     cmp_path = output_dir / "downstream_comparison.json"
+    requested_cfg_path = output_dir / "downstream_config_requested.json"
+    effective_cfg_path = output_dir / "downstream_config_snapshot.json"
     config_snapshot_path = output_dir / "downstream_config_snapshot.json"
 
     backend_payload = dict(backend_status or {})
@@ -280,6 +306,52 @@ def _extract_trace_summary(sel: dict | None) -> dict:
         "Fneu_summary": trace_parse.get("Fneu_summary"),
         "spks_summary": trace_parse.get("spks_summary"),
     }
+
+
+def _resolve_presegmentation_scalars(
+    output_dir: Path,
+    preseg_cfg: dict[str, Any] | None,
+) -> tuple[float | None, float | None]:
+    preseg_cfg = dict(preseg_cfg or {})
+    pixel_size_um = _safe_float(preseg_cfg.get("pixel_size_um"))
+    fps_hz = _safe_float(preseg_cfg.get("fps_hz"))
+    if pixel_size_um is not None and fps_hz is not None:
+        return pixel_size_um, fps_hz
+
+    run_root = output_dir.resolve().parent
+    manifest = _read_json(run_root / "manifests" / "pipeline_manifest.json") or {}
+    raw_metrics_path = manifest.get("raw_metrics_json")
+    if raw_metrics_path:
+        raw_metrics = _read_json(Path(str(raw_metrics_path)).resolve()) or {}
+        data_summary = raw_metrics.get("data_summary", {}) if isinstance(raw_metrics.get("data_summary"), dict) else {}
+        if pixel_size_um is None:
+            pixel_size_um = _safe_float(data_summary.get("pixel_size_um"))
+        if fps_hz is None:
+            fps_hz = _safe_float(data_summary.get("frame_rate_hz"))
+    return pixel_size_um, fps_hz
+
+
+def _run_presegmentation_profile_stage(
+    final_stack_path: Path,
+    output_dir: Path,
+    segmentation_config: dict[str, Any],
+    preseg_cfg: dict[str, Any] | None,
+) -> dict[str, Any]:
+    from presegmentation_profile import build_presegmentation_profile
+
+    preseg_cfg = dict(preseg_cfg or {})
+    pixel_size_um, fps_hz = _resolve_presegmentation_scalars(output_dir, preseg_cfg)
+    profile_root = output_dir / "presegmentation"
+    return build_presegmentation_profile(
+        final_stack_path=final_stack_path,
+        output_root=profile_root,
+        segmentation_config=segmentation_config,
+        pixel_size_um=pixel_size_um,
+        fps_hz=fps_hz,
+        target_mode=str(preseg_cfg.get("target_mode") or "soma"),
+        norm_p_low=float(preseg_cfg.get("norm_p_low", 5.0)),
+        norm_p_high=float(preseg_cfg.get("norm_p_high", 99.5)),
+    )
 
 
 def _normalize_stack_to_thw(arr: np.ndarray, expect_hw: tuple[int, int]) -> np.ndarray:
@@ -761,8 +833,13 @@ def _run_paired_trace_extraction(
     raw_traces_all, raw_meta = _extract_mean_traces_from_tif(raw_stack_path, all_roi_defs)
     final_traces_all, final_meta = _extract_mean_traces_from_tif(final_stack_path, all_roi_defs)
 
-    display_roi_rows = _load_final_roi_rows(artifacts["roi_summary_csv"], top_n=int(top_n_final_rois), subset="display")
-    roi_defs_display = _load_rank_masks_from_labelmask(artifacts["display_labelmask_uint16_tif"], display_roi_rows)
+    requested_trace_count = max(1, int(top_n_final_rois))
+    min_trace_display_count = max(5, requested_trace_count)
+    if len(all_roi_rows) <= min_trace_display_count:
+        trace_display_rows = list(all_roi_rows)
+    else:
+        trace_display_rows = list(all_roi_rows[:min_trace_display_count])
+    roi_defs_display = _load_rank_masks_from_labelmask(artifacts["analysis_mask_uint16_tif"], trace_display_rows)
     all_rank_to_idx = {int(roi["rank"]): idx for idx, roi in enumerate(all_roi_defs)}
     selected_pairs = [
         (roi, all_rank_to_idx[int(roi["rank"])])
@@ -898,9 +975,11 @@ def _run_paired_trace_extraction(
 
     summary = {
         "execution_status": "executed",
-        "anchor_source": "final_display_subset",
+        "anchor_source": "final_analysis_subset_dynamic",
         "selected_count": int(len(roi_defs)),
         "top_n_final_rois": int(top_n_final_rois),
+        "min_trace_display_count": int(min_trace_display_count),
+        "display_rule": f"show all when final analysis ROI <= {int(min_trace_display_count)}, else show top {int(min_trace_display_count)} by final analysis rank",
         "roi_ranks": [int(r["rank"]) for r in roi_defs],
         "roi_ids": [int(r["rid"]) for r in roi_defs],
         "all_selected_count": int(len(all_roi_defs)),
@@ -979,6 +1058,8 @@ def run_downstream_analysis(
     run_status_path = output_dir / "run_status.json"
     summary_path = output_dir / "summary.json"
     cmp_path = output_dir / "downstream_comparison.json"
+    requested_cfg_path = output_dir / "downstream_config_requested.json"
+    effective_cfg_path = output_dir / "downstream_config_snapshot.json"
 
     backend_status = {
         "backend_name": cfg["backend_name"],
@@ -1007,8 +1088,12 @@ def run_downstream_analysis(
         )
 
     try:
-        from suite2p_segmentation import run_suite2p_segmentation
+        import suite2p_segmentation as suite2p_segmentation_module
         from roi_selection_artifacts import select_rois_and_build_artifacts
+
+        run_suite2p_segmentation = suite2p_segmentation_module.run_suite2p_segmentation
+        if getattr(suite2p_segmentation_module, "suite2p", None) is None:
+            raise ImportError("suite2p import probe failed inside suite2p_segmentation.py")
         backend_status["available"] = True
         backend_status["status"] = "available"
     except Exception as exc:
@@ -1031,7 +1116,30 @@ def run_downstream_analysis(
         )
 
     _write_json(backend_status_path, backend_status)
-    _write_json(output_dir / "downstream_config_snapshot.json", cfg)
+    _write_json(requested_cfg_path, cfg)
+
+    effective_cfg = json.loads(json.dumps(cfg))
+    preseg_result = None
+    preseg_note = None
+    preseg_error = None
+    try:
+        if bool((cfg.get("presegmentation_config", {}) or {}).get("enabled", True)):
+            preseg_result = _run_presegmentation_profile_stage(
+                final_stack_path=final_stack_path,
+                output_dir=output_dir,
+                segmentation_config=dict(cfg.get("segmentation_config", {}) or {}),
+                preseg_cfg=dict(cfg.get("presegmentation_config", {}) or {}),
+            )
+            effective_cfg.setdefault("segmentation_config", {}).update(
+                dict(preseg_result.get("suggested_segmentation_config") or {})
+            )
+            preseg_note = "presegmentation_profile_applied"
+        else:
+            preseg_note = "presegmentation_profile_disabled"
+    except Exception as exc:
+        preseg_error = f"presegmentation_profile_failed: {type(exc).__name__}: {exc}"
+        preseg_note = preseg_error
+    _write_json(effective_cfg_path, effective_cfg)
 
     raw_seg = None
     raw_sel = None
@@ -1040,9 +1148,15 @@ def run_downstream_analysis(
 
     final_root = output_dir / "final"
     raw_root = output_dir / "raw"
-    final_seg = run_suite2p_segmentation(final_stack_path, final_root, cfg.get("segmentation_config", {}))
+    preseg_candidate_labelmask_tif = None
+    if preseg_result is not None:
+        preseg_candidate_labelmask_tif = ((preseg_result.get("artifacts") or {}).get("selected_candidate_labelmask_tif"))
+    final_seg = run_suite2p_segmentation(final_stack_path, final_root, effective_cfg.get("segmentation_config", {}))
     sel_cfg_final = dict(cfg.get("selection_config", {}))
     sel_cfg_final["asset_prefix"] = "final"
+    if preseg_candidate_labelmask_tif:
+        sel_cfg_final["preseg_guided_analysis"] = True
+        sel_cfg_final["preseg_candidate_labelmask_tif"] = str(preseg_candidate_labelmask_tif)
     final_sel = select_rois_and_build_artifacts(
         plane0_dir=Path(final_seg["artifacts"]["plane0_intensityfilt_dir"]),
         output_root=final_root / "roi_selection",
@@ -1051,9 +1165,12 @@ def run_downstream_analysis(
 
     raw_executed = False
     if bool(cfg.get("run_raw", True)):
-        raw_seg = run_suite2p_segmentation(raw_stack_path, raw_root, cfg.get("segmentation_config", {}))
+        raw_seg = run_suite2p_segmentation(raw_stack_path, raw_root, effective_cfg.get("segmentation_config", {}))
         sel_cfg_raw = dict(cfg.get("selection_config", {}))
         sel_cfg_raw["asset_prefix"] = "raw"
+        if preseg_candidate_labelmask_tif:
+            sel_cfg_raw["preseg_guided_analysis"] = True
+            sel_cfg_raw["preseg_candidate_labelmask_tif"] = str(preseg_candidate_labelmask_tif)
         raw_sel = select_rois_and_build_artifacts(
             plane0_dir=Path(raw_seg["artifacts"]["plane0_intensityfilt_dir"]),
             output_root=raw_root / "roi_selection",
@@ -1069,7 +1186,9 @@ def run_downstream_analysis(
         "final_stack_path": str(final_stack_path),
         "final_stack_source": "final/final_stack.tif",
         "suite2p_registration_used": bool(final_seg.get("suite2p_registration_used")),
-        "config_snapshot_path": str(output_dir / "downstream_config_snapshot.json"),
+        "config_snapshot_path": str(effective_cfg_path),
+        "requested_config_path": str(requested_cfg_path),
+        "presegmentation_report_path": str((preseg_result or {}).get("report_html")) if preseg_result else None,
     }
     _write_json(run_status_path, run_status)
 
@@ -1102,16 +1221,26 @@ def run_downstream_analysis(
             "final_display_selected_count": final_counts["display_selected_count"],
         },
         "selection_thresholds_used": {
-            "intensity_thr_max": (cfg.get("segmentation_config", {}) or {}).get("int_thr_max"),
-            "intensity_thr_std": (cfg.get("segmentation_config", {}) or {}).get("int_thr_std"),
+            "intensity_thr_max": (effective_cfg.get("segmentation_config", {}) or {}).get("int_thr_max"),
+            "intensity_thr_std": (effective_cfg.get("segmentation_config", {}) or {}).get("int_thr_std"),
             "min_largest_cc_area": (cfg.get("selection_config", {}) or {}).get("min_largest_cc_area"),
             "top_percent": (cfg.get("selection_config", {}) or {}).get("top_percent"),
             "polish_selected_masks": (cfg.get("selection_config", {}) or {}).get("polish_selected_masks"),
             "erode_pixels": (cfg.get("selection_config", {}) or {}).get("erode_pixels"),
         },
+        "segmentation_config_used": dict(effective_cfg.get("segmentation_config", {}) or {}),
+        "presegmentation": {
+            "enabled": bool((cfg.get("presegmentation_config", {}) or {}).get("enabled", True)),
+            "status": "applied" if preseg_result else ("disabled" if preseg_note == "presegmentation_profile_disabled" else "failed"),
+            "note": preseg_note,
+            "profile_json": (preseg_result or {}).get("profile_json"),
+            "suggested_config_json": (preseg_result or {}).get("suggested_config_json"),
+            "report_html": (preseg_result or {}).get("report_html"),
+            "suggested_segmentation_config": (preseg_result or {}).get("suggested_segmentation_config"),
+        },
         "paired_trace": paired_trace_result,
-        "notes": [],
-        "unavailable_fields": [],
+        "notes": [preseg_note] if preseg_note else [],
+        "unavailable_fields": ["presegmentation_profile"] if preseg_error else [],
     }
     _write_json(summary_path, summary)
 
@@ -1139,13 +1268,20 @@ def run_downstream_analysis(
         "spks_summary_raw": raw_trace["spks_summary"] if raw_executed else None,
         "spks_summary_final": final_trace["spks_summary"],
         "paired_trace": paired_trace_result,
+        "segmentation_config_used": dict(effective_cfg.get("segmentation_config", {}) or {}),
+        "presegmentation": {
+            "profile_json": (preseg_result or {}).get("profile_json"),
+            "suggested_config_json": (preseg_result or {}).get("suggested_config_json"),
+            "report_html": (preseg_result or {}).get("report_html"),
+            "suggested_segmentation_config": (preseg_result or {}).get("suggested_segmentation_config"),
+        },
         "artifact_paths": {
             "raw": raw_sel.get("artifacts", {}) if raw_executed and raw_sel else {},
             "final": final_sel.get("artifacts", {}) if final_sel else {},
             "paired_trace": (paired_trace_result or {}).get("artifacts", {}),
         },
-        "notes": [],
-        "unavailable_fields": [],
+        "notes": [preseg_note] if preseg_note else [],
+        "unavailable_fields": ["presegmentation_profile"] if preseg_error else [],
     }
     _write_json(cmp_path, cmp)
 
@@ -1154,6 +1290,11 @@ def run_downstream_analysis(
         "run_status_path": str(run_status_path),
         "summary_path": str(summary_path),
         "comparison_path": str(cmp_path),
+        "requested_config_path": str(requested_cfg_path),
+        "effective_config_path": str(effective_cfg_path),
+        "presegmentation_profile_json": (preseg_result or {}).get("profile_json"),
+        "presegmentation_suggested_config_json": (preseg_result or {}).get("suggested_config_json"),
+        "presegmentation_report_html": (preseg_result or {}).get("report_html"),
         "paired_trace": paired_trace_result,
         "raw": {"segmentation": raw_seg, "selection": raw_sel},
         "final": {"segmentation": final_seg, "selection": final_sel},
@@ -1196,7 +1337,7 @@ def materialize_final_and_run_downstream(
             "backend_version_or_source": str(downstream_config.get("backend_version_or_source") or "local_repo"),
             "source_files_used": list(
                 downstream_config.get("source_files_used")
-                or ["suite2p_segmentation.py", "roi_selection_artifacts.py"]
+                or ["suite2p_segmentation.py", "roi_selection_artifacts.py", "presegmentation_profile.py"]
             ),
             "import_mode": "external_python_subprocess",
             "dataset_profile": str(dataset_profile),

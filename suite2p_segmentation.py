@@ -2,15 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-Suite2p neurite-friendly segmentation pipeline (dendrite/axon/boutons oriented)
-+ Intensity-based post-filter on MAX/STD projections (non-overwrite, new folder)
-+ Robust background-aware normalization for MAX/STD before thresholding.
+Suite2p downstream segmentation pipeline with precomputed projections,
+compact-cell-body defaults, and intensity-based post-filtering on MAX/STD.
 
 What this script does:
 1) Read a TIFF stack (supports 3D: (T,H,W) or (H,W,T); supports 4D: (A,B,H,W) or (H,W,A,B)).
 2) Save a working movie "img_cat.tif" under output folder "<parent_folder>_seg".
 3) Save MAX and STD projections (MAX.tif / STD.tif) for QC.
-4) Run suite2p with neurite/axon-friendly detection parameters.
+4) Run suite2p with NeuroPilot downstream detection parameters.
 5) Post-filter suite2p "cell" ROIs (iscell==1 by default):
    - Normalize MAX/STD with robust percentile background subtraction -> [0,1].
    - For each ROI, compute mean intensity on normalized MAX and normalized STD.
@@ -20,7 +19,8 @@ What this script does:
 6) Optionally delete the temporary "img_cat.tif".
 
 Notes:
-- This filter is "neurite-friendly" because it only removes ROIs that are dim on both MAX and STD.
+- The MAX/STD intensity filter only removes ROIs that are dim on both projections,
+  so it stays conservative even when the upstream profiling stage tightens soma-first detection.
 - Thresholds are defined on normalized images in [0,1], so INT_THR_MAX/STD are directly interpretable.
 """
 
@@ -181,16 +181,19 @@ FS_HZ = 10
 NPLANES = 1
 NCHANNELS = 1
 
-# Registration (if your movie is already corrected, keep False)
-DO_REGISTRATION = True
+# Registration stays off here because NeuroPilot final stacks are already
+# motion-corrected upstream; downstream suite2p should focus on ROI detection.
+DO_REGISTRATION = False
 NONRIGID = False
 
-# Neurite-friendly detection knobs (main sweep knobs)
-DIAMETER_PX = 32           # try 6 / 8 / 10
-THRESH_SCALING = 0.7      # try 0.6~1.0 (smaller => more ROIs)
-ASPECT_MAX = 5.0          # allow elongated ROIs; try 3 / 5 / 10
-MAX_OVERLAP = 0.75        # neurites overlap a lot; try 0.5~0.9
-MIN_AREA_PX = 20          # keep small boutons; try 10~40
+# Soma-first detection defaults. A pre-segmentation profiling stage can refine
+# these before suite2p runs, but the fallback defaults should already prefer
+# compact cell bodies rather than neurite-like elongated regions.
+DIAMETER_PX = 16
+THRESH_SCALING = 1.0
+ASPECT_MAX = 2.0
+MAX_OVERLAP = 0.45
+MIN_AREA_PX = 40
 
 # Neuropil tuned for small ROIs
 NEUROPIL_EXTRACT = True
@@ -476,6 +479,36 @@ def _fingerprint(config: dict) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _save_effective_ops_snapshot(plane0_dir: Path, out_path: Path) -> str | None:
+    ops_path = plane0_dir / "ops.npy"
+    if not ops_path.exists():
+        return None
+    try:
+        ops = np.load(ops_path, allow_pickle=True).item()
+    except Exception:
+        return None
+    keys = [
+        "fs",
+        "nplanes",
+        "nchannels",
+        "do_registration",
+        "nonrigid",
+        "diameter",
+        "threshold_scaling",
+        "aspect",
+        "max_overlap",
+        "min_area",
+        "allow_overlap",
+        "inner_neuropil_radius",
+        "min_neuropil_pixels",
+        "maxregshift",
+        "block_size",
+    ]
+    payload = {k: ops.get(k) for k in keys}
+    _write_json(out_path, payload)
+    return str(out_path)
+
+
 def run_suite2p_segmentation(
     input_tif_path: str | Path,
     output_root: str | Path,
@@ -534,6 +567,7 @@ def run_suite2p_segmentation(
     ):
         stat = np.load(plane0_dir / "stat.npy", allow_pickle=True) if (plane0_dir / "stat.npy").exists() else []
         iscell = np.load(plane0_intensity_dir / "iscell.npy", allow_pickle=True)
+        effective_ops_path = _save_effective_ops_snapshot(plane0_dir, output_root / "suite2p_effective_ops.json")
         return {
             "execution_status": "skipped",
             "skip_reason": "matched_fingerprint",
@@ -547,6 +581,7 @@ def run_suite2p_segmentation(
                 "plane0_intensityfilt_dir": str(plane0_intensity_dir),
                 "max_tif": str(output_root / "MAX.tif"),
                 "std_tif": str(output_root / "STD.tif"),
+                "effective_ops_json": effective_ops_path,
             },
             "counts": {
                 "plane0_total": int(len(stat)),
@@ -621,6 +656,7 @@ def run_suite2p_segmentation(
 
     stat = np.load(plane0_dir / "stat.npy", allow_pickle=True) if (plane0_dir / "stat.npy").exists() else []
     iscell = np.load(plane0_intensity_dir / "iscell.npy", allow_pickle=True)
+    effective_ops_path = _save_effective_ops_snapshot(plane0_dir, output_root / "suite2p_effective_ops.json")
 
     _write_json(
         sidecar_path,
@@ -642,6 +678,7 @@ def run_suite2p_segmentation(
             "plane0_intensityfilt_dir": str(plane0_intensity_dir),
             "max_tif": str(max_tif),
             "std_tif": str(std_tif),
+            "effective_ops_json": effective_ops_path,
         },
         "counts": {
             "plane0_total": int(len(stat)),
@@ -713,7 +750,7 @@ def main():
     ops["block_size"] = [128, 128]
     ops["maxregshift"] = 0.1
 
-    # -------- Neurite-friendly detection --------
+    # -------- NeuroPilot downstream detection --------
     ops["diameter"] = int(DIAMETER_PX)
     ops["threshold_scaling"] = float(THRESH_SCALING)
     ops["aspect"] = float(ASPECT_MAX)
@@ -721,7 +758,7 @@ def main():
     ops["min_area"] = float(MIN_AREA_PX)
 
     # Extraction
-    ops["allow_overlap"] = True  # IMPORTANT for dense neurites
+    ops["allow_overlap"] = True
 
     # Neuropil (small ROI friendly)
     ops["neuropil_extract"] = bool(NEUROPIL_EXTRACT)
@@ -741,7 +778,7 @@ def main():
     ops["combined"] = False
     ops["save_mat"] = False
 
-    print("\n[INFO] Running suite2p with neurite-friendly ops:")
+    print("\n[INFO] Running suite2p with NeuroPilot downstream ops:")
     for k in [
         "do_registration", "nonrigid", "diameter", "threshold_scaling", "aspect",
         "max_overlap", "min_area", "allow_overlap", "inner_neuropil_radius",

@@ -1,0 +1,69 @@
+<svg width="430" height="180" viewBox="0 0 430 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="430" height="180" rx="18" fill="transparent"/>
+
+  <g filter="url(#glowText)">
+    <text x="22" y="68" fill="#81D7FF" font-family="Aptos, Segoe UI, Arial, sans-serif" font-size="36" font-weight="800" letter-spacing="-0.4">
+      NeuroPilot
+    </text>
+  </g>
+
+  <g opacity="0.9">
+    <path d="M230 80C258 52 296 44 334 55C358 62 377 77 390 99" stroke="#71DAB2" stroke-width="4" stroke-linecap="round"/>
+    <path d="M238 90C268 73 301 70 332 80C355 88 373 102 384 121" stroke="#78C8FF" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="1 7"/>
+    <path d="M302 54L319 34" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M334 57L343 27" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M366 77L386 57" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M386 100L409 97" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M379 125L397 142" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+
+    <circle cx="302" cy="54" r="4" fill="#F2C982"/>
+    <circle cx="319" cy="34" r="4" fill="#F2C982"/>
+    <circle cx="334" cy="57" r="4" fill="#F2C982"/>
+    <circle cx="343" cy="27" r="4" fill="#F2C982"/>
+    <circle cx="366" cy="77" r="4" fill="#F2C982"/>
+    <circle cx="386" cy="57" r="4" fill="#F2C982"/>
+    <circle cx="386" cy="100" r="4" fill="#F2C982"/>
+    <circle cx="409" cy="97" r="4" fill="#F2C982"/>
+    <circle cx="379" cy="125" r="4" fill="#F2C982"/>
+    <circle cx="397" cy="142" r="4" fill="#F2C982"/>
+    <circle cx="353" cy="117" r="5" fill="#71DAB2"/>
+    <circle cx="323" cy="84" r="5" fill="#71DAB2"/>
+  </g>
+
+  <g transform="translate(66 104)">
+    <polygon points="0,-26 24,-13 24,13 0,26 -24,13 -24,-13" stroke="#71DAB2" stroke-width="4" fill="none"/>
+    <circle cx="0" cy="0" r="7" fill="#F2C982"/>
+    <circle cx="0" cy="0" r="16" stroke="#78C8FF" stroke-width="2" stroke-dasharray="1 7" fill="none"/>
+
+    <path d="M-24 -13L-48 -28" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M-24 13L-48 28" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M0 -26V-51" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M24 -13L52 -13" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M24 13L48 28" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+
+    <circle cx="-48" cy="-28" r="4" fill="#F2C982"/>
+    <circle cx="-58" cy="-40" r="4" fill="#F2C982"/>
+    <circle cx="-48" cy="28" r="4" fill="#F2C982"/>
+    <circle cx="-58" cy="40" r="4" fill="#F2C982"/>
+    <circle cx="0" cy="-51" r="4" fill="#F2C982"/>
+    <circle cx="0" cy="-66" r="4" fill="#F2C982"/>
+    <circle cx="52" cy="-13" r="4" fill="#F2C982"/>
+    <circle cx="67" cy="-13" r="4" fill="#F2C982"/>
+    <circle cx="48" cy="28" r="4" fill="#F2C982"/>
+    <circle cx="60" cy="42" r="4" fill="#F2C982"/>
+
+    <path d="M-48 -28L-58 -40" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M-48 28L-58 40" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M0 -51V-66" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M52 -13H67" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+    <path d="M48 28L60 42" stroke="#71DAB2" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <defs>
+    <filter id="glowText" x="0" y="0" width="215" height="100" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur stdDeviation="6" result="effect1_foregroundBlur"/>
+    </filter>
+  </defs>
+</svg>

@@ -34,21 +34,30 @@ import numpy as np
 import tifffile as tiff
 
 
-def load_tif_anyshape(tif_path: str | Path) -> np.ndarray:
-    """
-    Load a TIFF-like stack and return a 3D movie with shape (T, H, W).
+def _normalize_array_to_thw(arr: np.ndarray, axes: str | None = None) -> np.ndarray:
+    arr = np.asarray(arr)
+    axes_text = str(axes or "").upper()
+    if arr.ndim == 2:
+        return arr[None, ...]
 
-    Supported cases:
-    - (T, H, W)
-    - (H, W, T)  via shape heuristic
-    - (A, B, H, W) -> (A*B, H, W)
-    - (H, W, A, B) -> (A*B, H, W)
-    """
-    arr = tiff.imread(str(tif_path))
+    if axes_text and len(axes_text) == arr.ndim and "Y" in axes_text and "X" in axes_text:
+        y_idx = axes_text.index("Y")
+        x_idx = axes_text.index("X")
+        non_spatial = [idx for idx in range(arr.ndim) if idx not in {y_idx, x_idx}]
+        ordered = np.transpose(arr, non_spatial + [y_idx, x_idx])
+        height, width = int(ordered.shape[-2]), int(ordered.shape[-1])
+        frames = int(np.prod(ordered.shape[:-2], dtype=np.int64))
+        return np.asarray(ordered).reshape(frames, height, width)
 
     if arr.ndim == 3:
-        if arr.shape[2] < arr.shape[0] and arr.shape[2] < arr.shape[1]:
-            arr = np.transpose(arr, (2, 0, 1))
+        # Prefer the common TIFF movie layout (T, H, W). The previous
+        # T <= W heuristic broke long recordings such as (1507, 512, 384).
+        if arr.shape[1] >= 16 and arr.shape[2] >= 16:
+            if arr.shape[0] == arr.shape[1] and arr.shape[2] != arr.shape[0]:
+                return np.asarray(np.transpose(arr, (2, 0, 1)))
+            return np.asarray(arr)
+        if arr.shape[0] >= 16 and arr.shape[1] >= 16:
+            return np.asarray(np.transpose(arr, (2, 0, 1)))
         return np.asarray(arr)
 
     if arr.ndim == 4:
@@ -63,6 +72,24 @@ def load_tif_anyshape(tif_path: str | Path) -> np.ndarray:
         return np.asarray(arr).reshape(a_dim * b_dim, height, width)
 
     raise ValueError(f"Unsupported TIFF dims={arr.ndim}, shape={arr.shape}")
+
+
+def load_tif_anyshape(tif_path: str | Path) -> np.ndarray:
+    """
+    Load a TIFF-like stack and return a 3D movie with shape (T, H, W).
+
+    Supported cases:
+    - (T, H, W)
+    - (H, W, T)  via shape heuristic
+    - (A, B, H, W) -> (A*B, H, W)
+    - (H, W, A, B) -> (A*B, H, W)
+    """
+    tif_path = Path(tif_path).expanduser().resolve()
+    with tiff.TiffFile(str(tif_path)) as tf:
+        series = tf.series[0] if getattr(tf, "series", None) else None
+        if series is not None:
+            return _normalize_array_to_thw(series.asarray(), getattr(series, "axes", None))
+        return _normalize_array_to_thw(tf.asarray(), None)
 
 
 def moving_average_1d(x: np.ndarray, window: int) -> np.ndarray:
@@ -103,6 +130,44 @@ def _robust_mad_std(x: np.ndarray) -> float:
     med = float(np.median(x))
     mad = float(np.median(np.abs(x - med)))
     return float(1.4826 * mad)
+
+
+def _registration_blur_radius_px(height: int, width: int) -> int:
+    return max(1, int(round(min(int(height), int(width)) / 64.0)))
+
+
+def _uniform_filter_axis(arr: np.ndarray, radius: int, axis: int) -> np.ndarray:
+    arr_f = np.asarray(arr, dtype=np.float32)
+    radius = max(0, int(radius))
+    if radius == 0:
+        return arr_f.astype(np.float32, copy=True)
+    window = 2 * radius + 1
+    pad_width = [(0, 0)] * arr_f.ndim
+    pad_width[axis] = (radius, radius)
+    padded = np.pad(arr_f, pad_width, mode="edge")
+    csum = np.cumsum(padded, axis=axis, dtype=np.float64)
+    zeros_shape = list(csum.shape)
+    zeros_shape[axis] = 1
+    csum = np.concatenate([np.zeros(zeros_shape, dtype=np.float64), csum], axis=axis)
+    hi = [slice(None)] * arr_f.ndim
+    lo = [slice(None)] * arr_f.ndim
+    hi[axis] = slice(window, None)
+    lo[axis] = slice(None, -window)
+    out = (csum[tuple(hi)] - csum[tuple(lo)]) / float(window)
+    return out.astype(np.float32, copy=False)
+
+
+def _box_blur_2d(frame: np.ndarray, radius_px: int) -> np.ndarray:
+    radius_px = max(0, int(radius_px))
+    if radius_px == 0:
+        return np.asarray(frame, dtype=np.float32)
+    tmp = _uniform_filter_axis(frame, radius_px, axis=0)
+    return _uniform_filter_axis(tmp, radius_px, axis=1)
+
+
+def _signed_shift_axis(length: int) -> np.ndarray:
+    coords = np.arange(int(length), dtype=np.int32)
+    return np.where(coords > int(length) // 2, coords - int(length), coords)
 
 
 def save_projection_tifs(stack: np.ndarray, output_dir: Path, stem: str) -> dict[str, str]:
@@ -328,6 +393,7 @@ def compute_snr_metric(
 def preprocess_for_registration(stack: np.ndarray) -> np.ndarray:
     stack_f = stack.astype(np.float32, copy=False)
     processed = np.empty_like(stack_f, dtype=np.float32)
+    blur_radius_px = _registration_blur_radius_px(stack_f.shape[1], stack_f.shape[2])
 
     for idx in range(stack_f.shape[0]):
         frame = stack_f[idx]
@@ -335,12 +401,15 @@ def preprocess_for_registration(stack: np.ndarray) -> np.ndarray:
         hi = float(np.percentile(frame, 99))
         frame_clip = np.clip(frame, lo, hi)
         frame_centered = frame_clip - float(np.median(frame_clip))
-        scale = float(np.std(frame_centered))
+        frame_lowfreq = _box_blur_2d(frame_centered, blur_radius_px)
+        scale = _robust_mad_std(frame_lowfreq)
+        if scale <= 1e-8:
+            scale = float(np.std(frame_lowfreq))
         if scale > 1e-8:
-            frame_norm = frame_centered / scale
+            frame_norm = frame_lowfreq / scale
         else:
-            frame_norm = frame_centered
-        processed[idx] = frame_norm
+            frame_norm = frame_lowfreq
+        processed[idx] = np.tanh(frame_norm / 3.0).astype(np.float32, copy=False)
 
     return processed
 
@@ -351,7 +420,16 @@ def make_hanning_window(height: int, width: int) -> np.ndarray:
     return np.outer(wy, wx).astype(np.float32)
 
 
-def phase_correlation_shift(frame: np.ndarray, template: np.ndarray) -> tuple[float, float, float]:
+def phase_correlation_shift(
+    frame: np.ndarray,
+    template: np.ndarray,
+    prev_shift: tuple[float, float] | None = None,
+    max_shift_radius_px: float | None = None,
+    continuity_radius_px: float = 2.0,
+    continuity_score_ratio: float = 0.94,
+    zero_shift_score_ratio: float = 0.90,
+    zero_shift_min_mag_px: float = 2.0,
+) -> tuple[float, float, float]:
     """
     Return shift-to-apply to the frame in order to align it to the template.
 
@@ -371,16 +449,47 @@ def phase_correlation_shift(frame: np.ndarray, template: np.ndarray) -> tuple[fl
     cross_power /= np.maximum(np.abs(cross_power), 1e-8)
 
     corr = np.abs(np.fft.ifft2(cross_power))
-    peak_y, peak_x = np.unravel_index(np.argmax(corr), corr.shape)
+    signed_y = _signed_shift_axis(height).astype(np.float32, copy=False)
+    signed_x = _signed_shift_axis(width).astype(np.float32, copy=False)
+    dx_grid = -signed_x[None, :]
+    dy_grid = -signed_y[:, None]
+    shift_mag = np.hypot(dx_grid, dy_grid)
+
+    allowed = np.ones(corr.shape, dtype=bool)
+    if max_shift_radius_px is not None and float(max_shift_radius_px) > 0:
+        allowed &= shift_mag <= float(max_shift_radius_px)
+    constrained = np.where(allowed, corr, -np.inf)
+    best_flat = int(np.argmax(constrained))
+    if not np.isfinite(constrained.flat[best_flat]):
+        best_flat = int(np.argmax(corr))
+    peak_y, peak_x = np.unravel_index(best_flat, corr.shape)
     peak_value = float(corr[peak_y, peak_x])
+    shift_y_to_apply = float(dy_grid[peak_y, 0])
+    shift_x_to_apply = float(dx_grid[0, peak_x])
 
-    if peak_y > height // 2:
-        peak_y -= height
-    if peak_x > width // 2:
-        peak_x -= width
+    if prev_shift is not None:
+        prev_dx, prev_dy = float(prev_shift[0]), float(prev_shift[1])
+        continuity_mask = allowed & (
+            ((dx_grid - prev_dx) ** 2 + (dy_grid - prev_dy) ** 2)
+            <= float(continuity_radius_px) ** 2 + 1e-6
+        )
+        if np.any(continuity_mask):
+            continuity_scores = np.where(continuity_mask, corr, -np.inf)
+            cont_flat = int(np.argmax(continuity_scores))
+            cont_score = float(continuity_scores.flat[cont_flat])
+            if np.isfinite(cont_score) and cont_score >= peak_value * float(continuity_score_ratio):
+                cont_y, cont_x = np.unravel_index(cont_flat, corr.shape)
+                peak_y, peak_x = cont_y, cont_x
+                peak_value = float(corr[peak_y, peak_x])
+                shift_y_to_apply = float(dy_grid[peak_y, 0])
+                shift_x_to_apply = float(dx_grid[0, peak_x])
 
-    shift_y_to_apply = float(-peak_y)
-    shift_x_to_apply = float(-peak_x)
+    zero_score = float(corr[0, 0])
+    chosen_mag = float(np.hypot(shift_x_to_apply, shift_y_to_apply))
+    if chosen_mag >= float(zero_shift_min_mag_px) and zero_score >= peak_value * float(zero_shift_score_ratio):
+        peak_value = zero_score
+        shift_x_to_apply = 0.0
+        shift_y_to_apply = 0.0
 
     return shift_x_to_apply, shift_y_to_apply, peak_value
 
@@ -390,15 +499,26 @@ def estimate_raw_motion_rigid(stack: np.ndarray) -> tuple[dict[str, Any], np.nda
 
     num_template_frames = min(100, stack_proc.shape[0])
     template = np.median(stack_proc[:num_template_frames], axis=0)
+    blur_radius_px = _registration_blur_radius_px(stack_proc.shape[1], stack_proc.shape[2])
+    max_shift_radius_px = max(4.0, 0.35 * float(min(stack_proc.shape[1], stack_proc.shape[2])))
+    continuity_radius_px = min(6.0, max(2.0, round(min(stack_proc.shape[1], stack_proc.shape[2]) * 0.02)))
 
     shifts = []
     corr_scores = []
+    prev_shift: tuple[float, float] | None = None
 
     for idx in range(stack_proc.shape[0]):
         frame = stack_proc[idx]
-        dx, dy, score = phase_correlation_shift(frame, template)
+        dx, dy, score = phase_correlation_shift(
+            frame,
+            template,
+            prev_shift=prev_shift,
+            max_shift_radius_px=max_shift_radius_px,
+            continuity_radius_px=continuity_radius_px,
+        )
         shifts.append([dx, dy])
         corr_scores.append(score)
+        prev_shift = (dx, dy)
 
     shifts = np.asarray(shifts, dtype=np.float64)
     corr_scores = np.asarray(corr_scores, dtype=np.float64)
@@ -412,8 +532,22 @@ def estimate_raw_motion_rigid(stack: np.ndarray) -> tuple[dict[str, Any], np.nda
     dmag = np.sqrt(ddx ** 2 + ddy ** 2)
 
     motion_json = {
-        "method": "phase_correlation_to_median_template_after_framewise_normalization",
+        "method": "background_weighted_phase_correlation_to_median_template",
         "template_frame_count": int(num_template_frames),
+        "curve_semantics": {
+            "absolute_shift_curve": "template_distance_proxy_px",
+            "recommended_report_curve": "frame_to_frame_jitter_px",
+        },
+        "estimator_settings": {
+            "clip_percentiles": [1.0, 99.0],
+            "background_blur_radius_px": int(blur_radius_px),
+            "nonlinear_compression": "tanh(x/3)",
+            "max_shift_radius_px": float(max_shift_radius_px),
+            "continuity_radius_px": float(continuity_radius_px),
+            "continuity_score_ratio": 0.94,
+            "zero_shift_score_ratio": 0.90,
+            "zero_shift_min_mag_px": 2.0,
+        },
         "rigid_motion_summary": {
             "motion_mean_px": float(np.mean(mag)),
             "motion_median_px": float(np.median(mag)),

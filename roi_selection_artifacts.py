@@ -202,7 +202,26 @@ def make_hd_image_nearest(img: np.ndarray, upsample: int) -> np.ndarray:
     h, w = img.shape[:2]
     return cv2.resize(img, (w * upsample, h * upsample), interpolation=cv2.INTER_NEAREST)
 
+def build_single_mask_filename(
+    rank: int,
+    rid: int,
+    *,
+    area: int | None = None,
+    raw_area: int | None = None,
+    final_area: int | None = None,
+) -> str:
+    parts = [f"r{int(rank):04d}", f"id{int(rid):04d}"]
+    if area is not None:
+        parts.append(f"a{int(area):05d}")
+    if raw_area is not None:
+        parts.append(f"ra{int(raw_area):05d}")
+    if final_area is not None:
+        parts.append(f"fa{int(final_area):05d}")
+    return "_".join(parts) + ".tif"
+
 def save_single_mask_tif(mask01: np.ndarray, out_path: Path, value: int = 255):
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     m = (mask01 > 0).astype(np.uint8)
     if value == 255:
         m = m * 255
@@ -275,6 +294,154 @@ def polish_single_mask(
             m = eroded
 
     return m.astype(np.uint8)
+
+
+def _mask_bbox(mask01: np.ndarray) -> tuple[int, int, int, int]:
+    ys, xs = np.where(mask01 > 0)
+    if ys.size == 0 or xs.size == 0:
+        return 0, 0, 0, 0
+    return int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+
+
+def _mask_centroid_xy(mask01: np.ndarray) -> tuple[float, float]:
+    ys, xs = np.where(mask01 > 0)
+    if ys.size == 0 or xs.size == 0:
+        return 0.0, 0.0
+    return float(np.mean(xs)), float(np.mean(ys))
+
+
+def _load_rank_masks_from_labelmask(labelmask_path: str | Path) -> list[dict]:
+    labelmask = np.asarray(tiff.imread(str(Path(labelmask_path).resolve())))
+    labelmask = np.asarray(np.squeeze(labelmask), dtype=np.int32)
+    if labelmask.ndim != 2:
+        raise ValueError(f"Expected 2D labelmask, got shape={labelmask.shape}")
+    rows = []
+    for rank in sorted(int(x) for x in np.unique(labelmask) if int(x) > 0):
+        mask = (labelmask == rank).astype(np.uint8)
+        area = int(np.count_nonzero(mask))
+        if area <= 0:
+            continue
+        x0, y0, x1, y1 = _mask_bbox(mask)
+        cx, cy = _mask_centroid_xy(mask)
+        rows.append(
+            {
+                "rank": int(rank),
+                "mask": mask,
+                "area": area,
+                "bbox_xyxy": (x0, y0, x1, y1),
+                "centroid_xy": (cx, cy),
+            }
+        )
+    return rows
+
+
+def _dilate_binary_mask(mask01: np.ndarray, dilate_px: int) -> np.ndarray:
+    mask01 = (np.asarray(mask01) > 0).astype(np.uint8)
+    if int(dilate_px) <= 0:
+        return mask01
+    kernel_size = max(3, int(dilate_px) * 2 + 1)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+    return cv2.dilate(mask01, kernel, iterations=1).astype(np.uint8)
+
+
+def _build_preseg_guided_analysis_info(
+    preseg_candidate_labelmask_tif: str | Path,
+    roi_pool_info: list[dict],
+    cfg: dict,
+) -> list[dict]:
+    candidate_defs = _load_rank_masks_from_labelmask(preseg_candidate_labelmask_tif)
+    if not candidate_defs:
+        return []
+
+    min_candidate_overlap = float(cfg.get("preseg_min_candidate_overlap", 0.18))
+    min_roi_overlap = float(cfg.get("preseg_min_roi_overlap", 0.05))
+    max_centroid_distance = float(cfg.get("preseg_max_centroid_distance_px", 18.0))
+    dilate_px = int(cfg.get("preseg_candidate_dilate_px", 6))
+    synthetic_rid_base = int(cfg.get("preseg_synthetic_rid_base", 100000))
+
+    used_rids: set[int] = set()
+    guided_rows: list[dict] = []
+    for candidate in candidate_defs:
+        candidate_mask = (np.asarray(candidate["mask"]) > 0).astype(np.uint8)
+        candidate_area = int(candidate["area"])
+        candidate_centroid_xy = candidate["centroid_xy"]
+        candidate_dilated = _dilate_binary_mask(candidate_mask, dilate_px)
+
+        best_match = None
+        best_key = None
+        for roi in roi_pool_info:
+            rid = int(roi["rid"])
+            if rid in used_rids:
+                continue
+            roi_mask = (np.asarray(roi["largest_cc_mask"]) > 0)
+            overlap_px = int(np.count_nonzero(np.logical_and(roi_mask, candidate_dilated > 0)))
+            if overlap_px <= 0:
+                continue
+            overlap_candidate = float(overlap_px / max(candidate_area, 1))
+            overlap_roi = float(overlap_px / max(int(roi["largest_cc_area"]), 1))
+            roi_cx, roi_cy = roi["centroid_xy"]
+            centroid_distance = float(math.hypot(roi_cx - candidate_centroid_xy[0], roi_cy - candidate_centroid_xy[1]))
+            roi_cx_i = int(np.clip(round(roi_cx), 0, candidate_dilated.shape[1] - 1))
+            roi_cy_i = int(np.clip(round(roi_cy), 0, candidate_dilated.shape[0] - 1))
+            centroid_inside = bool(candidate_dilated[roi_cy_i, roi_cx_i] > 0)
+            match_ok = (
+                overlap_candidate >= min_candidate_overlap
+                or overlap_roi >= min_roi_overlap
+                or (centroid_inside and centroid_distance <= max_centroid_distance)
+            )
+            if not match_ok:
+                continue
+            key = (
+                overlap_candidate,
+                overlap_roi,
+                1 if centroid_inside else 0,
+                -centroid_distance,
+                float(roi["trace_max"]),
+            )
+            if best_key is None or key > best_key:
+                best_key = key
+                best_match = {
+                    "rid": rid,
+                    "trace_max": float(roi["trace_max"]),
+                    "largest_cc_area": int(roi["largest_cc_area"]),
+                    "centroid_xy": tuple(roi["centroid_xy"]),
+                    "overlap_candidate": overlap_candidate,
+                    "overlap_roi": overlap_roi,
+                    "centroid_distance_px": centroid_distance,
+                    "centroid_inside_dilated_candidate": centroid_inside,
+                }
+
+        if best_match is not None:
+            used_rids.add(int(best_match["rid"]))
+            trace_max_value = float(best_match["trace_max"])
+            rid_value = int(best_match["rid"])
+            trace_rid = int(best_match["rid"])
+            source_mode = "preseg_candidate_mask_matched_suite2p_roi"
+        else:
+            trace_max_value = float(candidate_area)
+            rid_value = int(synthetic_rid_base + candidate["rank"])
+            trace_rid = None
+            source_mode = "preseg_candidate_mask_only"
+
+        guided_rows.append(
+            {
+                "rid": rid_value,
+                "trace_rid": trace_rid,
+                "largest_cc_area": candidate_area,
+                "largest_cc_mask": candidate_mask,
+                "trace_max": trace_max_value,
+                "selected_mask_final": candidate_mask.copy(),
+                "selected_mask_final_area": candidate_area,
+                "preseg_candidate_label": int(candidate["rank"]),
+                "preseg_match": best_match,
+                "source_mode": source_mode,
+            }
+        )
+
+    guided_rows.sort(key=lambda d: (-float(d["trace_max"]), int(d.get("preseg_candidate_label", 0))))
+    for rank, row in enumerate(guided_rows, start=1):
+        row["rank"] = int(rank)
+    return guided_rows
 
 
 def _write_json(path: Path, payload: dict):
@@ -356,6 +523,14 @@ def select_rois_and_build_artifacts(
         "hd_upsample": HD_UPSAMPLE,
         "trace_examples_top_n": 12,
         "asset_prefix": "final",
+        "preseg_guided_analysis": False,
+        "preseg_candidate_labelmask_tif": None,
+        "preseg_guided_use_all_rois": True,
+        "preseg_candidate_dilate_px": 6,
+        "preseg_min_candidate_overlap": 0.18,
+        "preseg_min_roi_overlap": 0.05,
+        "preseg_max_centroid_distance_px": 18.0,
+        "preseg_synthetic_rid_base": 100000,
     }
     if selection_config:
         cfg.update(selection_config)
@@ -379,30 +554,60 @@ def select_rois_and_build_artifacts(
     n_total = int(len(stat))
     trace_max_all = safe_trace_max_per_roi(F) if F is not None else np.full(n_total, np.nan, dtype=np.float32)
 
-    candidate_ids = np.arange(n_total, dtype=int)
-    if bool(cfg["analysis_only_iscell"]) and iscell is not None and iscell.shape[0] == n_total:
-        candidate_ids = np.where(iscell[:, 0].astype(bool))[0]
+    guided_mode = bool(cfg.get("preseg_guided_analysis"))
+    preseg_candidate_labelmask_tif = cfg.get("preseg_candidate_labelmask_tif")
+    if guided_mode and preseg_candidate_labelmask_tif:
+        roi_pool_ids = np.arange(n_total, dtype=int) if bool(cfg.get("preseg_guided_use_all_rois", True)) else None
+    else:
+        roi_pool_ids = None
+    if roi_pool_ids is None:
+        roi_pool_ids = np.arange(n_total, dtype=int)
+        if bool(cfg["analysis_only_iscell"]) and iscell is not None and iscell.shape[0] == n_total:
+            roi_pool_ids = np.where(iscell[:, 0].astype(bool))[0]
 
-    analysis_info = []
-    for rid in candidate_ids:
+    roi_pool_info = []
+    for rid in roi_pool_ids:
         full_mask = build_full_mask_from_stat(stat[rid], Ly, Lx)
         largest_cc_mask, largest_cc_area = largest_connected_component(full_mask)
-        if largest_cc_area >= int(cfg["min_largest_cc_area"]):
-            analysis_info.append(
-                {
-                    "rid": int(rid),
-                    "largest_cc_area": int(largest_cc_area),
-                    "largest_cc_mask": largest_cc_mask,
-                    "trace_max": float(trace_max_all[rid]) if trace_max_all is not None else float("nan"),
-                }
-            )
+        if largest_cc_area <= 0:
+            continue
+        roi_pool_info.append(
+            {
+                "rid": int(rid),
+                "largest_cc_area": int(largest_cc_area),
+                "largest_cc_mask": largest_cc_mask,
+                "trace_max": float(trace_max_all[rid]) if trace_max_all is not None else float("nan"),
+                "centroid_xy": _mask_centroid_xy(largest_cc_mask),
+            }
+        )
+
+    analysis_info = []
+    if guided_mode and preseg_candidate_labelmask_tif:
+        try:
+            analysis_info = _build_preseg_guided_analysis_info(preseg_candidate_labelmask_tif, roi_pool_info, cfg)
+        except Exception:
+            analysis_info = []
+
+    if len(analysis_info) == 0:
+        for roi in roi_pool_info:
+            if int(roi["largest_cc_area"]) >= int(cfg["min_largest_cc_area"]):
+                analysis_info.append(
+                    {
+                        "rid": int(roi["rid"]),
+                        "trace_rid": int(roi["rid"]),
+                        "largest_cc_area": int(roi["largest_cc_area"]),
+                        "largest_cc_mask": np.asarray(roi["largest_cc_mask"], dtype=np.uint8),
+                        "trace_max": float(roi["trace_max"]),
+                        "source_mode": "suite2p_largest_cc",
+                    }
+                )
 
     if len(analysis_info) == 0:
         summary = {
             "execution_status": "executed",
             "counts": {
                 "plane0_total": n_total,
-                "candidate_count": int(len(candidate_ids)),
+                "candidate_count": int(len(roi_pool_ids)),
                 "analysis_after_cc_area_filter": 0,
                 "display_selected_count": 0,
             },
@@ -457,9 +662,10 @@ def select_rois_and_build_artifacts(
     for rank, d in enumerate(analysis_final, start=1):
         cc_mask = d["largest_cc_mask"] > 0
         analysis_label_mask[cc_mask] = np.uint16(rank)
-        out_name = (
-            f"rank_{rank:04d}_rid_{int(d['rid']):04d}_area_{int(d['largest_cc_area']):05d}"
-            f"_tracemax_{float(d['trace_max']):.4f}.tif"
+        out_name = build_single_mask_filename(
+            rank=rank,
+            rid=int(d["rid"]),
+            area=int(d["largest_cc_area"]),
         )
         save_single_mask_tif(
             d["largest_cc_mask"],
@@ -473,6 +679,7 @@ def select_rois_and_build_artifacts(
     denom = max(len(selected_info), 1)
 
     rows_for_csv = []
+    selected_row_by_rid: dict[int, dict] = {}
     selected_rids = []
     for rank, d in enumerate(selected_info, start=1):
         rid = int(d["rid"])
@@ -487,26 +694,29 @@ def select_rois_and_build_artifacts(
         bgr = (int(rgb_u8[2]), int(rgb_u8[1]), int(rgb_u8[0]))
         color_img_no_ids[final_mask > 0] = bgr
 
-        out_name = (
-            f"rank_{rank:04d}_rid_{rid:04d}_rawarea_{int(d['largest_cc_area']):05d}"
-            f"_finalarea_{int(d['selected_mask_final_area']):05d}_tracemax_{float(d['trace_max']):.4f}.tif"
+        out_name = build_single_mask_filename(
+            rank=rank,
+            rid=rid,
+            raw_area=int(d["largest_cc_area"]),
+            final_area=int(d["selected_mask_final_area"]),
         )
         save_single_mask_tif(
             final_mask,
             selected_dir / out_name,
             value=int(cfg["single_mask_tif_value"]),
         )
-        rows_for_csv.append(
-            {
-                "rank": rank,
-                "rid": rid,
-                "largest_cc_area_raw": int(d["largest_cc_area"]),
-                "final_area_polished": int(d["selected_mask_final_area"]),
-                "trace_max": float(d["trace_max"]),
-                "in_analysis_set": 1,
-                "in_display_subset": 1,
-            }
-        )
+        row_payload = {
+            "rank": rank,
+            "rid": rid,
+            "largest_cc_area_raw": int(d["largest_cc_area"]),
+            "final_area_polished": int(d["selected_mask_final_area"]),
+            "trace_max": float(d["trace_max"]),
+            "in_analysis_set": 1,
+            "in_display_subset": 1,
+            "source_mode": str(d.get("source_mode", "suite2p_largest_cc")),
+        }
+        rows_for_csv.append(row_payload)
+        selected_row_by_rid[rid] = row_payload
 
     color_img_with_ids = color_img_no_ids.copy()
     for row, d in zip(rows_for_csv, selected_info):
@@ -544,18 +754,45 @@ def select_rois_and_build_artifacts(
     tiff.imwrite(str(analysis_mask_path), analysis_label_mask, photometric="minisblack", metadata=None)
     tiff.imwrite(str(display_mask_path), display_label_mask, photometric="minisblack", metadata=None)
 
+    analysis_rows_for_csv = []
+    selected_rid_set = {int(rid) for rid in selected_rids}
+    for d in analysis_final:
+        rid = int(d["rid"])
+        row_payload = selected_row_by_rid.get(rid)
+        if row_payload is None:
+            row_payload = {
+                "rank": int(d["rank"]),
+                "rid": rid,
+                "largest_cc_area_raw": int(d["largest_cc_area"]),
+                "final_area_polished": int(d.get("selected_mask_final_area", d["largest_cc_area"])),
+                "trace_max": float(d["trace_max"]),
+                "in_analysis_set": 1,
+                "in_display_subset": 1 if rid in selected_rid_set else 0,
+                "source_mode": str(d.get("source_mode", "suite2p_largest_cc")),
+            }
+        analysis_rows_for_csv.append(row_payload)
+    analysis_rows_for_csv.sort(key=lambda row: int(row["rank"]))
+
     with open(roi_csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
             fieldnames=[
                 "rank", "rid", "largest_cc_area_raw", "final_area_polished", "trace_max",
-                "in_analysis_set", "in_display_subset"
+                "in_analysis_set", "in_display_subset", "source_mode"
             ],
         )
         writer.writeheader()
-        writer.writerows(rows_for_csv)
+        writer.writerows(analysis_rows_for_csv)
 
-    trace_path = _save_trace_examples_png(F, [int(d["rid"]) for d in selected_info], trace_png, top_n=int(cfg["trace_examples_top_n"]))
+    trace_source_rids = []
+    for d in selected_info:
+        trace_rid = d.get("trace_rid", d.get("rid"))
+        if trace_rid is None:
+            continue
+        trace_rid = int(trace_rid)
+        if isinstance(F, np.ndarray) and F.ndim == 2 and 0 <= trace_rid < F.shape[0]:
+            trace_source_rids.append(trace_rid)
+    trace_path = _save_trace_examples_png(F, trace_source_rids, trace_png, top_n=int(cfg["trace_examples_top_n"]))
 
     trace_parse = {
         "trace_count": int(F.shape[0]) if isinstance(F, np.ndarray) and F.ndim == 2 else 0,
@@ -570,7 +807,7 @@ def select_rois_and_build_artifacts(
         "execution_status": "executed",
         "counts": {
             "plane0_total": n_total,
-            "candidate_count": int(len(candidate_ids)),
+            "candidate_count": int(len(roi_pool_ids)),
             "analysis_after_cc_area_filter": int(len(ranked_info)),
             "analysis_final_count": int(len(analysis_final)),
             "display_selected_count": int(len(selected_info)),
@@ -595,6 +832,7 @@ def select_rois_and_build_artifacts(
             "trace_examples_png": str(trace_path),
         },
         "config_used": cfg,
+        "analysis_source": "preseg_guided_candidate_masks" if (guided_mode and preseg_candidate_labelmask_tif and len(analysis_info) > 0 and str(analysis_info[0].get("source_mode", "")).startswith("preseg_")) else "suite2p_largest_cc",
     }
     _write_json(roi_selection_dir / "selection_summary.json", summary)
     return summary
@@ -716,11 +954,7 @@ def main():
         trace_max = float(d["trace_max"])
         cc_mask = d["largest_cc_mask"]
 
-        out_name = (
-            f"rank_{rank:04d}_rid_{rid:04d}"
-            f"_area_{area:05d}"
-            f"_tracemax_{trace_max:.4f}.tif"
-        )
+        out_name = build_single_mask_filename(rank=rank, rid=rid, area=area)
         save_single_mask_tif(
             cc_mask,
             all_filtered_dir / out_name,
@@ -740,11 +974,11 @@ def main():
         trace_max = float(d["trace_max"])
         final_mask = d["selected_mask_final"]
 
-        out_name = (
-            f"rank_{rank:04d}_rid_{rid:04d}"
-            f"_rawarea_{raw_area:05d}"
-            f"_finalarea_{final_area:05d}"
-            f"_tracemax_{trace_max:.4f}.tif"
+        out_name = build_single_mask_filename(
+            rank=rank,
+            rid=rid,
+            raw_area=raw_area,
+            final_area=final_area,
         )
         save_single_mask_tif(
             final_mask,

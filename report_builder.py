@@ -26,6 +26,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Rectangle
 import numpy as np
 import tifffile as tiff
+from input_metrics import estimate_raw_motion_rigid, load_tif_anyshape
 
 RAW_COLOR = "#2f2f2f"
 DENOISE_COLOR = "#d57d2a"
@@ -35,12 +36,16 @@ BORDER_COLOR = "#d9d9d9"
 TEXT_MUTED = "#5f5f5f"
 DISPLAY_FINAL_NAME = "NeuroPilot"
 REPORT_DISPLAY_TOP_PERCENT = 0.60
+REPORT_SEGMENTATION_MIN_DISPLAY_COUNT = 10
+REPORT_SEGMENTATION_SHOW_ALL_BELOW = 10
+REPORT_TRACE_MIN_DISPLAY_COUNT = 5
 REPORT_CROP_SCALE_FACTOR = 0.55
 DEFAULT_IMAGING_MODALITY = "2p"
 DEFAULT_PIXEL_SIZE_UM = 0.645
 DEFAULT_FPS_HZ = 10.0
 REPORT_TITLE = "NeuroPilot Processing Analysis Report"
 REPORT_KYMOGRAPH_LINE_COUNT = 2
+REPORT_MOTION_METHOD = "background_weighted_phase_correlation_to_median_template"
 READER_LABELS = {
     "raw": "Raw",
     "denoise": "Denoised",
@@ -121,6 +126,16 @@ def _read_json(path: str | Path) -> dict[str, Any] | None:
         return json.load(f)
 
 
+def _find_input_metrics_json(run_root: Path) -> Path | None:
+    metrics_dir = run_root / "metrics" / "input"
+    if not metrics_dir.exists():
+        return None
+    candidates = sorted(metrics_dir.glob("*_metrics.json"))
+    if not candidates:
+        return None
+    return candidates[0].resolve()
+
+
 def _safe_float(x: Any) -> float | None:
     if x is None:
         return None
@@ -147,6 +162,44 @@ def _summary_array(x: np.ndarray | None) -> dict[str, Any]:
         "p95": float(np.percentile(x, 95)),
         "max": float(np.max(x)),
     }
+
+
+def _curve_from_shifts(shifts: np.ndarray, mode: str = "jitter") -> np.ndarray:
+    shifts_arr = np.asarray(shifts, dtype=np.float32)
+    if shifts_arr.ndim != 2 or shifts_arr.shape[1] < 2:
+        raise ValueError(f"Expected rigid shifts with shape (T,2+), got {shifts_arr.shape}")
+    dx = shifts_arr[:, 0]
+    dy = shifts_arr[:, 1]
+    mode_key = str(mode or "jitter").strip().lower()
+    if mode_key == "magnitude":
+        return np.hypot(dx, dy).astype(np.float32, copy=False)
+    ddx = np.diff(dx, prepend=dx[0])
+    ddy = np.diff(dy, prepend=dy[0])
+    return np.hypot(ddx, ddy).astype(np.float32, copy=False)
+
+
+def _motion_metric_uses_current_estimator(metrics: dict[str, Any] | None) -> bool:
+    method = str((metrics or {}).get("rigid_motion_metric", {}).get("method") or "").strip()
+    return method == REPORT_MOTION_METHOD
+
+
+def _resolve_report_motion_artifacts(
+    stack_path: Path,
+    metrics: dict[str, Any] | None,
+    cache_npy_path: Path,
+) -> tuple[dict[str, Any], np.ndarray, str]:
+    artifacts = (metrics or {}).get("artifacts", {}) if isinstance(metrics, dict) else {}
+    saved_shift_path = artifacts.get("rigid_shifts_npy")
+    if _motion_metric_uses_current_estimator(metrics) and saved_shift_path and Path(saved_shift_path).exists():
+        saved_shifts = np.asarray(np.load(str(Path(saved_shift_path))), dtype=np.float32)
+        if saved_shifts.ndim == 2 and saved_shifts.shape[1] >= 2:
+            return dict((metrics or {}).get("rigid_motion_metric", {})), saved_shifts, str(saved_shift_path)
+
+    stack = load_tif_anyshape(stack_path)
+    motion_metric, shifts = estimate_raw_motion_rigid(stack)
+    cache_npy_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(str(cache_npy_path), np.asarray(shifts, dtype=np.float32))
+    return dict(motion_metric), np.asarray(shifts, dtype=np.float32), str(cache_npy_path)
 
 
 def _reader_label(key: str | None) -> str:
@@ -225,13 +278,28 @@ def _truncate_middle(text: Any, max_chars: int = 90) -> str:
     return f"{s[:head]}...{s[-tail:]}"
 
 
-def _normalize_stack_to_thw(arr: np.ndarray) -> np.ndarray:
+def _normalize_stack_to_thw(arr: np.ndarray, axes: str | None = None) -> np.ndarray:
     arr = np.asarray(arr)
+    axes_text = str(axes or "").upper()
     if arr.ndim == 2:
         return arr[None, ...]
+    if axes_text and len(axes_text) == arr.ndim and "Y" in axes_text and "X" in axes_text:
+        y_idx = axes_text.index("Y")
+        x_idx = axes_text.index("X")
+        non_spatial = [idx for idx in range(arr.ndim) if idx not in {y_idx, x_idx}]
+        ordered = np.transpose(arr, non_spatial + [y_idx, x_idx])
+        height, width = int(ordered.shape[-2]), int(ordered.shape[-1])
+        frames = int(np.prod(ordered.shape[:-2], dtype=np.int64))
+        return np.asarray(ordered).reshape(frames, height, width)
     if arr.ndim == 3:
-        if arr.shape[0] <= arr.shape[-1]:
+        # Prefer the common TIFF movie layout (T, H, W). The old T <= W
+        # heuristic broke long recordings like (1507, 512, 384).
+        if arr.shape[1] >= 16 and arr.shape[2] >= 16:
+            if arr.shape[0] == arr.shape[1] and arr.shape[2] != arr.shape[0]:
+                return np.transpose(arr, (2, 0, 1))
             return arr
+        if arr.shape[0] >= 16 and arr.shape[1] >= 16:
+            return np.transpose(arr, (2, 0, 1))
         return np.transpose(arr, (2, 0, 1))
     if arr.ndim == 4:
         if arr.shape[2] >= 16 and arr.shape[3] >= 16:
@@ -278,7 +346,10 @@ def _stack_info(stack_path: str | Path) -> dict[str, Any]:
                 "width_px": int(frame0.shape[1]),
                 "dtype": str(frame0.dtype),
             }
-        stack = _normalize_stack_to_thw(series.asarray() if series is not None else tf.asarray())
+        stack = _normalize_stack_to_thw(
+            series.asarray() if series is not None else tf.asarray(),
+            getattr(series, "axes", None) if series is not None else None,
+        )
         return {
             "num_frames": int(stack.shape[0]),
             "height_px": int(stack.shape[1]),
@@ -296,7 +367,10 @@ def _iter_frames(stack_path: str | Path):
             for idx, page in enumerate(pages):
                 yield idx, np.asarray(np.squeeze(page.asarray()))
             return
-        stack = _normalize_stack_to_thw(series.asarray() if series is not None else tf.asarray())
+        stack = _normalize_stack_to_thw(
+            series.asarray() if series is not None else tf.asarray(),
+            getattr(series, "axes", None) if series is not None else None,
+        )
         for idx in range(int(stack.shape[0])):
             yield idx, np.asarray(stack[idx])
 
@@ -310,7 +384,10 @@ def _read_frame(stack_path: str | Path, frame_index: int) -> np.ndarray:
         pages = _primary_series_pages(series)
         if pages is not None:
             return np.asarray(np.squeeze(pages[frame_index].asarray()))
-        stack = _normalize_stack_to_thw(series.asarray() if series is not None else tf.asarray())
+        stack = _normalize_stack_to_thw(
+            series.asarray() if series is not None else tf.asarray(),
+            getattr(series, "axes", None) if series is not None else None,
+        )
         return np.asarray(stack[frame_index])
 
 
@@ -1313,7 +1390,13 @@ def _mask_boundary(mask: np.ndarray) -> np.ndarray:
     return mask & ~inner
 
 
-def _report_labels_for_overlay(labelmask: np.ndarray, roi_summary_csv: str | Path | None, report_top_percent: float) -> list[int]:
+def _report_labels_for_overlay(
+    labelmask: np.ndarray,
+    roi_summary_csv: str | Path | None,
+    report_top_percent: float,
+    min_display_count: int = REPORT_SEGMENTATION_MIN_DISPLAY_COUNT,
+    show_all_below: int = REPORT_SEGMENTATION_SHOW_ALL_BELOW,
+) -> tuple[list[int], str]:
     labels = [int(x) for x in np.unique(labelmask) if int(x) > 0]
     labels.sort()
     csv_ranks: list[int] = []
@@ -1327,8 +1410,17 @@ def _report_labels_for_overlay(labelmask: np.ndarray, roi_summary_csv: str | Pat
     source_labels = labels
     if len(csv_ranks) >= len(labels):
         source_labels = csv_ranks
-    keep = max(1, int(math.ceil(len(source_labels) * float(report_top_percent)))) if source_labels else 0
-    return source_labels[:keep]
+    total = len(source_labels)
+    if total == 0:
+        return [], "Report display subset: no analysis ROI available"
+    if total <= int(show_all_below):
+        return list(source_labels), f"Report display subset: all {total} analysis ROI shown"
+    keep = max(int(min_display_count), int(math.ceil(total * float(report_top_percent))))
+    keep = min(keep, total)
+    return (
+        list(source_labels[:keep]),
+        f"Report display subset: top {int(round(report_top_percent * 100))}% of analysis ROI (minimum {int(min_display_count)}; showing {keep}/{total})",
+    )
 
 
 def save_segmentation_overlay_png(
@@ -1339,15 +1431,24 @@ def save_segmentation_overlay_png(
     title: str,
     report_top_percent: float,
     pixel_size_um: float | None = None,
+    min_display_count: int = REPORT_SEGMENTATION_MIN_DISPLAY_COUNT,
+    show_all_below: int = REPORT_SEGMENTATION_SHOW_ALL_BELOW,
 ) -> dict[str, Any]:
     labelmask = np.asarray(tiff.imread(str(Path(labelmask_path).expanduser().resolve())))
     labelmask = np.squeeze(labelmask)
-    selected_labels = _report_labels_for_overlay(labelmask, roi_summary_csv, report_top_percent)
+    selected_labels, display_note = _report_labels_for_overlay(
+        labelmask,
+        roi_summary_csv,
+        report_top_percent,
+        min_display_count=min_display_count,
+        show_all_below=show_all_below,
+    )
     if labelmask.ndim != 2 or not selected_labels:
         return {
             "png": save_unavailable_panel(output_png, title, "Segmentation overview unavailable"),
             "selected_count": 0,
             "selected_ranks": [],
+            "display_note": display_note,
         }
     bg = _normalize_image(background_img)
     rgb = np.repeat(bg[..., None], 3, axis=2)
@@ -1385,7 +1486,7 @@ def save_segmentation_overlay_png(
     ax.text(
         0.02,
         0.02,
-        f"Report display subset: top {int(round(report_top_percent * 100))}% of analysis ROI",
+        display_note,
         transform=ax.transAxes,
         ha="left",
         va="bottom",
@@ -1397,6 +1498,7 @@ def save_segmentation_overlay_png(
         "png": _save_figure(fig, output_png),
         "selected_count": len(selected_ranks),
         "selected_ranks": selected_ranks,
+        "display_note": display_note,
     }
 
 
@@ -1673,9 +1775,9 @@ def _save_trace_temporal_heatmap_png(
 
     binned, bin_count = _bin_trace_matrix(traces, target_bin_count=target_bin_count)
     zscore = _zscore_trace_rows(binned)
-    scale = min(0.12, 20.0 / max(bin_count, 1), 14.0 / max(len(roi_defs), 1))
-    fig_w = max(7.5, float(bin_count) * scale + 1.6)
-    fig_h = max(4.5, float(len(roi_defs)) * scale + 1.6)
+    n_roi = max(1, int(len(roi_defs)))
+    fig_w = 9.6
+    fig_h = 4.8
     tick_fontsize = _heatmap_tick_fontsize(len(roi_defs))
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=180)
     cmap = plt.get_cmap("RdBu_r")
@@ -1691,7 +1793,10 @@ def _save_trace_temporal_heatmap_png(
             fps_value = 0.0
         if math.isfinite(fps_value) and fps_value > 0:
             duration_s = float(traces.shape[1]) / fps_value
-    im = ax.imshow(zscore, cmap=cmap, vmin=-3.0, vmax=3.0, aspect="equal", interpolation="nearest", origin="upper")
+    # Keep the panel height stable. Matplotlib's equal aspect makes sparse
+    # ROI x long-time heatmaps collapse into a thin stripe.
+    im = ax.imshow(zscore, cmap=cmap, vmin=-3.0, vmax=3.0, aspect="auto", interpolation="nearest", origin="upper")
+    ax.set_ylim(n_roi - 0.5, -0.5)
     if duration_s is not None:
         xtick_count = max(2, min(6, bin_count))
         xticks = np.unique(np.round(np.linspace(0, max(bin_count - 1, 0), num=xtick_count)).astype(np.int32))
@@ -1782,12 +1887,12 @@ def _generate_paired_trace_assets(
         roi_csv = Path(str(artifacts.get("roi_table_csv", paired_dir / "paired_trace_roi_table.csv")))
         raw_npy = Path(str(artifacts.get("raw_trace_npy", paired_dir / "raw_traces_final_roi_anchor.npy")))
         final_npy = Path(str(artifacts.get("final_trace_npy", paired_dir / "final_traces_final_roi_anchor.npy")))
-        final_labelmask = seg_dir / "final" / "roi_selection" / "display_labelmask_uint16.tif"
-        if roi_csv.exists() and raw_npy.exists() and final_npy.exists() and final_labelmask.exists():
+        paired_labelmask = Path(str(artifacts.get("paired_labelmask_tif", labelmask_src_raw or paired_dir / "paired_trace_anchor_labelmask_uint16.tif")))
+        if roi_csv.exists() and raw_npy.exists() and final_npy.exists() and paired_labelmask.exists():
             roi_rows = []
             for row in _load_csv_rows(roi_csv):
                 roi_rows.append({"rank": int(row["rank"]), "rid": int(row["rid"]), "pixel_count": int(float(row.get("pixel_count", 0)))})
-            roi_defs = _load_rank_masks_from_labelmask(final_labelmask, roi_rows)
+            roi_defs = _load_rank_masks_from_labelmask(paired_labelmask, roi_rows)
             raw_traces = np.asarray(np.load(str(raw_npy)), dtype=np.float32)
             final_traces = np.asarray(np.load(str(final_npy)), dtype=np.float32)
             result["curve_png"] = _save_paired_trace_plot(raw_traces, final_traces, roi_defs, curve_dst)
@@ -1885,17 +1990,21 @@ def _save_motion_curve_png(
     target_label: str,
     pixel_size_um: float | None = None,
     target_display_name: str | None = None,
+    curve_mode: str = "jitter",
 ) -> str:
     fig, ax = plt.subplots(figsize=(7.6, 3.1), dpi=180)
     has_curve = False
-    unit_label = "Motion magnitude (px)"
+    mode_key = str(curve_mode or "jitter").strip().lower()
+    unit_label = "Residual jitter (px)" if mode_key == "jitter" else "Motion magnitude (px)"
     scale = _safe_float(pixel_size_um)
     if scale is not None and scale > 0:
         unit_label = "Motion magnitude (μm)"
+        if mode_key == "jitter":
+            unit_label = "Residual jitter (μm)"
     if raw_shifts_npy and Path(raw_shifts_npy).exists():
         raw = np.asarray(np.load(str(Path(raw_shifts_npy))), dtype=np.float32)
         if raw.ndim == 2 and raw.shape[1] >= 2:
-            raw_mag = np.sqrt(raw[:, 0] ** 2 + raw[:, 1] ** 2)
+            raw_mag = _curve_from_shifts(raw, mode=mode_key)
             if scale is not None and scale > 0:
                 raw_mag = raw_mag * float(scale)
             ax.plot(raw_mag, color=RAW_COLOR, linewidth=1.2, label=_reader_label("raw"))
@@ -1903,7 +2012,7 @@ def _save_motion_curve_png(
     if target_shifts_npy and Path(target_shifts_npy).exists():
         target = np.asarray(np.load(str(Path(target_shifts_npy))), dtype=np.float32)
         if target.ndim == 2 and target.shape[1] >= 2:
-            target_mag = np.sqrt(target[:, 0] ** 2 + target[:, 1] ** 2)
+            target_mag = _curve_from_shifts(target, mode=mode_key)
             if scale is not None and scale > 0:
                 target_mag = target_mag * float(scale)
             label = target_display_name or _reader_label(target_label)
@@ -1917,7 +2026,7 @@ def _save_motion_curve_png(
     else:
         ax.text(0.5, 0.5, "N/A", ha="center", va="center")
         ax.set_axis_off()
-    ax.set_title("Rigid motion magnitude across frames", loc="left", pad=4)
+    ax.set_title("Residual rigid jitter across frames" if mode_key == "jitter" else "Rigid motion magnitude across frames", loc="left", pad=4)
     return _save_figure(fig, output_png)
 
 
@@ -2232,7 +2341,12 @@ def build_deterministic_report(
     manifest = _read_json(run_root / "manifests" / "pipeline_manifest.json") or {}
     final_used_params = _read_json(run_root / "final_used_params.json") or {}
     final_sidecar = _read_json(run_root / "final" / "final_stack_sidecar.json") or {}
-    raw_metrics = _read_json(manifest.get("raw_metrics_json") or "") if manifest.get("raw_metrics_json") else None
+    raw_metrics_source = manifest.get("raw_metrics_json") or ""
+    raw_metrics = _read_json(raw_metrics_source) if raw_metrics_source else None
+    if raw_metrics is None:
+        fallback_raw_metrics = _find_input_metrics_json(run_root)
+        if fallback_raw_metrics is not None:
+            raw_metrics = _read_json(fallback_raw_metrics)
     if raw_metrics is None:
         unavailable.append("input_metrics_missing")
         raw_metrics = {}
@@ -2245,21 +2359,76 @@ def build_deterministic_report(
     final_sel = _read_json(run_root / "segmentation" / "final" / "roi_selection" / "selection_summary.json") or {}
 
     final_metrics, _ = _load_stage_metrics_from_comparison(comp_final)
-    raw_stack_path = Path(str(raw_metrics.get("input_file") or ""))
-    final_stack_path = Path(str(final_sidecar.get("final_stack_path") or (final_metrics or {}).get("input_file") or ""))
-    if not raw_stack_path.exists():
-        raise FileNotFoundError(f"Raw stack not found for report build: {raw_stack_path}")
-    if not final_stack_path.exists():
-        raise FileNotFoundError(f"Final stack not found for report build: {final_stack_path}")
 
-    def _maybe_read_projection(path_like: str | Path | None, fallback: np.ndarray | None = None) -> np.ndarray:
+    def _resolve_existing_stack_path(candidates: list[Any], fallback_dirs: list[Path] | None = None) -> Path | None:
+        for candidate in candidates:
+            candidate_text = str(candidate or "").strip()
+            if not candidate_text:
+                continue
+            try:
+                candidate_path = Path(candidate_text).expanduser().resolve()
+            except Exception:
+                continue
+            if candidate_path.exists() and candidate_path.is_file():
+                return candidate_path
+        for fallback_dir in fallback_dirs or []:
+            if not fallback_dir.exists() or not fallback_dir.is_dir():
+                continue
+            tif_candidates = sorted(list(fallback_dir.glob("*.tif")) + list(fallback_dir.glob("*.tiff")))
+            if tif_candidates:
+                return tif_candidates[0].resolve()
+        return None
+
+    raw_stack_path = _resolve_existing_stack_path(
+        candidates=[
+            raw_metrics.get("input_file"),
+            manifest.get("input_file"),
+        ],
+        fallback_dirs=[run_root / "raw_input"],
+    )
+    final_stack_path = _resolve_existing_stack_path(
+        candidates=[
+            final_sidecar.get("final_stack_path"),
+            (final_metrics or {}).get("input_file"),
+        ],
+        fallback_dirs=[run_root / "final"],
+    )
+    if raw_stack_path is None:
+        raise FileNotFoundError(f"Raw stack not found for report build: {raw_stack_path}")
+    if final_stack_path is None:
+        raise FileNotFoundError(f"Final stack not found for report build: {final_stack_path}")
+    report_motion_cache_dir = report_dir / "_motion_cache"
+    raw_motion_metric_for_report, raw_motion_shifts, raw_motion_source = _resolve_report_motion_artifacts(
+        raw_stack_path,
+        raw_metrics,
+        report_motion_cache_dir / f"{raw_stack_path.stem}_raw_report_rigid_shifts.npy",
+    )
+    final_motion_metric_for_report, final_motion_shifts, final_motion_source = _resolve_report_motion_artifacts(
+        final_stack_path,
+        final_metrics,
+        report_motion_cache_dir / f"{final_stack_path.stem}_final_report_rigid_shifts.npy",
+    )
+
+    def _maybe_read_projection(
+        path_like: str | Path | None,
+        fallback: np.ndarray | None = None,
+        expected_shape: tuple[int, int] | None = None,
+    ) -> np.ndarray:
         try:
             if path_like and Path(path_like).exists():
-                return _read_2d_tif(path_like)
+                projection = _read_2d_tif(path_like)
+                if expected_shape is None or tuple(projection.shape) == tuple(expected_shape):
+                    return projection
+                raise ValueError(
+                    f"Projection shape mismatch for {path_like}: "
+                    f"got {tuple(projection.shape)}, expected {tuple(expected_shape)}"
+                )
         except Exception:
             pass
         if fallback is not None:
-            return np.asarray(fallback, dtype=np.float32)
+            fallback_arr = np.asarray(fallback, dtype=np.float32)
+            if expected_shape is None or tuple(fallback_arr.shape) == tuple(expected_shape):
+                return fallback_arr
         raise FileNotFoundError(f"Projection image unavailable: {path_like}")
 
     rep_info = select_representative_frame(raw_stack_path)
@@ -2268,28 +2437,42 @@ def build_deterministic_report(
     final_rep_frame = _read_frame(final_stack_path, rep_frame)
     raw_corr_info = _compute_frame_to_mean_projection_correlation_curve(raw_stack_path)
     final_corr_info = _compute_frame_to_mean_projection_correlation_curve(final_stack_path)
+    raw_info = _stack_info(raw_stack_path)
+    final_info = _stack_info(final_stack_path)
+    raw_expected_hw = (int(raw_info["height_px"]), int(raw_info["width_px"]))
+    final_expected_hw = (int(final_info["height_px"]), int(final_info["width_px"]))
 
     raw_projection_fallback = {"std": np.asarray(rep_info["_std_map"], dtype=np.float32), "mip": None}
     final_projection_fallback = None
     try:
-        raw_std_img = _maybe_read_projection(raw_metrics.get("artifacts", {}).get("std_tif"), fallback=raw_projection_fallback["std"])
+        raw_std_img = _maybe_read_projection(
+            raw_metrics.get("artifacts", {}).get("std_tif"),
+            fallback=raw_projection_fallback["std"],
+            expected_shape=raw_expected_hw,
+        )
     except Exception:
         raw_std_img = np.asarray(rep_info["_std_map"], dtype=np.float32)
         unavailable.append("raw_std_projection_fallback")
     try:
-        raw_mip_img = _maybe_read_projection(raw_metrics.get("artifacts", {}).get("mip_tif"))
+        raw_mip_img = _maybe_read_projection(raw_metrics.get("artifacts", {}).get("mip_tif"), expected_shape=raw_expected_hw)
     except Exception:
         raw_projection_fallback = _compute_std_and_mip_projection(raw_stack_path)
         raw_mip_img = np.asarray(raw_projection_fallback["mip"], dtype=np.float32)
         unavailable.append("raw_mip_projection_fallback")
     try:
-        final_std_img = _maybe_read_projection(comp_final.get("artifact_paths", {}).get("final_artifacts", {}).get("std_tif"))
+        final_std_img = _maybe_read_projection(
+            comp_final.get("artifact_paths", {}).get("final_artifacts", {}).get("std_tif"),
+            expected_shape=final_expected_hw,
+        )
     except Exception:
         final_projection_fallback = _compute_std_and_mip_projection(final_stack_path)
         final_std_img = np.asarray(final_projection_fallback["std"], dtype=np.float32)
         unavailable.append("final_std_projection_fallback")
     try:
-        final_mip_img = _maybe_read_projection(comp_final.get("artifact_paths", {}).get("final_artifacts", {}).get("mip_tif"))
+        final_mip_img = _maybe_read_projection(
+            comp_final.get("artifact_paths", {}).get("final_artifacts", {}).get("mip_tif"),
+            expected_shape=final_expected_hw,
+        )
     except Exception:
         if final_projection_fallback is None:
             final_projection_fallback = _compute_std_and_mip_projection(final_stack_path)
@@ -2356,8 +2539,8 @@ def build_deterministic_report(
         coords["selection_rule"] = f"horizontal_midline_of_{region.get('name', f'region_{idx}') }"
         kymograph_lines.append(coords)
 
-    if raw_metrics.get("artifacts", {}).get("rigid_shifts_npy"):
-        motion_info = select_motion_burst_triplet(raw_metrics["artifacts"]["rigid_shifts_npy"], _stack_info(raw_stack_path)["num_frames"])
+    if raw_motion_source and Path(raw_motion_source).exists():
+        motion_info = select_motion_burst_triplet(raw_motion_source, _stack_info(raw_stack_path)["num_frames"])
     else:
         motion_info = {"center_frame": None, "delta": None, "triplet_frames": [], "selection_rule": "unavailable"}
         unavailable.append("raw_rigid_shifts_missing")
@@ -2478,24 +2661,24 @@ def build_deterministic_report(
             "value_fmt": "{:.2f}",
         },
         {
-            "label": "Motion mean",
-            "raw": _px_to_um(comp_final.get("motion_before_after", {}).get("raw", {}).get("motion_mean_px"), pixel_size_used),
-            "candidate": _px_to_um(comp_final.get("motion_before_after", {}).get("final", {}).get("motion_mean_px"), pixel_size_used),
+            "label": "Jitter mean",
+            "raw": _px_to_um(raw_motion_metric_for_report.get("frame_to_frame_jitter", {}).get("jitter_mean_px"), pixel_size_used),
+            "candidate": _px_to_um(final_motion_metric_for_report.get("frame_to_frame_jitter", {}).get("jitter_mean_px"), pixel_size_used),
             "candidate_label": display_name_final,
             "candidate_color": FINAL_COLOR,
             "unit": "μm",
             "value_fmt": "{:.2f}",
-            "delta_text": "Converted from rigid shift px",
+            "delta_text": "Frame-to-frame residual jitter",
         },
         {
-            "label": "Motion p95",
-            "raw": _px_to_um(comp_final.get("motion_before_after", {}).get("raw", {}).get("motion_p95_px"), pixel_size_used),
-            "candidate": _px_to_um(comp_final.get("motion_before_after", {}).get("final", {}).get("motion_p95_px"), pixel_size_used),
+            "label": "Jitter p95",
+            "raw": _px_to_um(raw_motion_metric_for_report.get("frame_to_frame_jitter", {}).get("jitter_p95_px"), pixel_size_used),
+            "candidate": _px_to_um(final_motion_metric_for_report.get("frame_to_frame_jitter", {}).get("jitter_p95_px"), pixel_size_used),
             "candidate_label": display_name_final,
             "candidate_color": FINAL_COLOR,
             "unit": "μm",
             "value_fmt": "{:.2f}",
-            "delta_text": "Converted from rigid shift px",
+            "delta_text": "Frame-to-frame residual jitter",
         },
         {
             "label": "Bleaching drop",
@@ -2512,8 +2695,8 @@ def build_deterministic_report(
         integrated_dir / "integrated_metric_bar_panel.png",
         title=f"{_reader_label('raw')} vs {display_name_final} quantitative comparison",
     )
-    raw_shifts_npy = comp_final.get("artifact_paths", {}).get("raw_artifacts", {}).get("rigid_shifts_npy")
-    final_shifts_npy = comp_final.get("artifact_paths", {}).get("final_artifacts", {}).get("rigid_shifts_npy")
+    raw_shifts_npy = raw_motion_source
+    final_shifts_npy = final_motion_source
     motion_curve_png = _save_motion_curve_png(
         raw_shifts_npy,
         final_shifts_npy,
@@ -2521,6 +2704,7 @@ def build_deterministic_report(
         target_label="final",
         pixel_size_um=pixel_size_used,
         target_display_name=display_name_final,
+        curve_mode="jitter",
     )
 
     raw_analysis_mask = run_root / "segmentation" / "raw" / "roi_selection" / "analysis_mask_uint16.tif"
@@ -2541,7 +2725,6 @@ def build_deterministic_report(
         "displayed_count": 0,
         "all_selected_count": 0,
     }
-    down_count_png = None
     if include_downstream_section:
         raw_overlay_info = save_segmentation_overlay_png(
             raw_std_img,
@@ -2551,6 +2734,8 @@ def build_deterministic_report(
             "Raw segmentation overview (STD background)",
             REPORT_DISPLAY_TOP_PERCENT,
             pixel_size_um=pixel_size_used,
+            min_display_count=REPORT_SEGMENTATION_MIN_DISPLAY_COUNT,
+            show_all_below=REPORT_SEGMENTATION_SHOW_ALL_BELOW,
         ) if raw_analysis_mask.exists() else {"png": save_unavailable_panel(down_dir / "segmentation_overlay_raw.png", "Raw segmentation overview", "Analysis mask missing"), "selected_count": 0, "selected_ranks": []}
         final_overlay_info = save_segmentation_overlay_png(
             final_std_img,
@@ -2560,6 +2745,8 @@ def build_deterministic_report(
             f"{display_name_final} segmentation overview (STD background)",
             REPORT_DISPLAY_TOP_PERCENT,
             pixel_size_um=pixel_size_used,
+            min_display_count=REPORT_SEGMENTATION_MIN_DISPLAY_COUNT,
+            show_all_below=REPORT_SEGMENTATION_SHOW_ALL_BELOW,
         ) if final_analysis_mask.exists() else {"png": save_unavailable_panel(down_dir / "segmentation_overlay_NeuroPilot.png", f"{display_name_final} segmentation overview", "Analysis mask missing"), "selected_count": 0, "selected_ranks": []}
         paired_assets = _generate_paired_trace_assets(
             run_root / "segmentation",
@@ -2568,17 +2755,6 @@ def build_deterministic_report(
             background_img=final_std_img,
             fps_hz=fps_hz_used,
             final_stack_path=final_stack_path,
-        )
-        down_count_png = save_downstream_count_panel(
-            [
-                {"label": "plane0 total", "raw": seg_summary.get("suite2p_counts", {}).get("raw_plane0_total"), "final": seg_summary.get("suite2p_counts", {}).get("final_plane0_total")},
-                {"label": "accepted ROI", "raw": seg_summary.get("suite2p_counts", {}).get("raw_after_cc_area_filter"), "final": seg_summary.get("suite2p_counts", {}).get("final_after_cc_area_filter")},
-                {"label": "display selected", "raw": seg_summary.get("suite2p_counts", {}).get("raw_display_selected_count"), "final": seg_summary.get("suite2p_counts", {}).get("final_display_selected_count")},
-                {"label": "trace count", "raw": seg_comp.get("trace_count_raw"), "final": seg_comp.get("trace_count_final")},
-            ],
-            down_dir / "downstream_count_panel.png",
-            title="Downstream quantitative comparison",
-            final_display_name=display_name_final,
         )
 
     report_assets = {
@@ -2591,7 +2767,6 @@ def build_deterministic_report(
         "corr_panel_png": corr_panel_png,
         "raw_seg_png": raw_overlay_info["png"],
         "final_seg_png": final_overlay_info["png"],
-        "down_count_png": down_count_png,
         "paired_curve_png": paired_assets.get("curve_png"),
         "paired_numbered_map_png": paired_assets.get("mask_png"),
         "paired_labelmask_tif": paired_assets.get("labelmask_tif"),
@@ -2618,7 +2793,7 @@ def build_deterministic_report(
                 _kv("dynamic range", _fmt(raw_metrics.get("data_summary", {}).get("dynamic_range", {}).get("robust_range_p99_minus_p01"))),
                 _kv("bleaching drop %", _fmt(raw_metrics.get("bleaching_trend", {}).get("relative_drop_percent"))),
                 _kv("SNR proxy", _fmt(raw_metrics.get("snr_metric", {}).get("snr"))),
-                _kv("motion mean px", _fmt(raw_metrics.get("rigid_motion_metric", {}).get("rigid_motion_summary", {}).get("motion_mean_px"))),
+                _kv("jitter mean px", _fmt(raw_motion_metric_for_report.get("frame_to_frame_jitter", {}).get("jitter_mean_px"))),
             ],
             "caption": "Raw input quality is summarized with the representative single frame, STD, and MIP. The ROI box shows the crop location reused later in the comparison panel. Scale bars use the configured pixel size and all intensity displays follow the selected imaging modality colormap.",
         },
@@ -2630,24 +2805,23 @@ def build_deterministic_report(
                 {"layout": "grid-1", "panels": [panel("Matched ROI crop grid (2x3)", crop_comparison_png, source=str(final_stack_path), note=f"Crop coordinates = ({roi_crop_region['x0']},{roi_crop_region['y0']})-({roi_crop_region['x1']},{roi_crop_region['y1']})")]},
                 {"layout": "grid-1", "panels": [panel("Kymograph group", kymograph_bundle_png, source=str(final_stack_path), note="NeuroPilot STD line map + Raw/NeuroPilot kymographs for line 1 and line 2")]},
                 {"layout": "grid-2", "panels": [
-                    panel("Raw vs NeuroPilot quantitative bars", metric_bar_png, source=str(run_root / "iterations" / "iter_1" / "metrics" / "comparison_raw_vs_final.json"), note="Fixed-ROI SNR proxy, motion mean, motion p95 and bleaching are shown as paired bars"),
-                    panel("Motion curve", motion_curve_png, source=str(final_shifts_npy or raw_shifts_npy or ""), note="Frame-wise rigid motion magnitude converted to μm using the configured pixel size"),
+                    panel("Raw vs NeuroPilot quantitative bars", metric_bar_png, source=str(run_root / "iterations" / "iter_1" / "metrics" / "comparison_raw_vs_final.json"), note="Fixed-ROI SNR proxy and bleaching come from before/after metrics; jitter mean and jitter p95 are re-estimated on the displayed stacks"),
+                    panel("Residual jitter curve", motion_curve_png, source=str(final_shifts_npy or raw_shifts_npy or ""), note="Frame-to-frame residual rigid jitter estimated on the displayed stacks and converted to um using the configured pixel size; stability proxy rather than the internal PyLoReg motion field"),
                 ]},
                 {"layout": "grid-1", "panels": [panel("Correlation curve", corr_panel_png, source=str(corr_curve_csv), note="frame-to-temporal-mean projection correlation")]},
             ],
             "metric_style": "metric-hero",
             "mini_metrics": [],
-            "caption": f"The central comparison uses only Raw vs {display_name_final}, not intermediate denoise-only or registration-only displays. The same representative frame and deterministic crop are reused across all six images; quantitative differences are now shown as paired bar charts, while frame-wise rigid motion is plotted in μm and the correlation panel remains only in this integrated section.",
+            "caption": f"The central comparison uses only Raw vs {display_name_final}, not intermediate denoise-only or registration-only displays. The same representative frame and deterministic crop are reused across all six images; quantitative differences are shown as paired bars, while residual frame-to-frame rigid jitter is plotted in um as a stability proxy and the correlation panel remains only in this integrated section.",
         },
         {
             "kicker": "Section C",
             "title": "C. Downstream Improvement",
             "panel_groups": [
                 {"layout": "grid-2", "panels": [
-                    panel("Raw segmentation map", raw_overlay_info["png"], source=str(raw_analysis_mask), note=f"Report display top percent = {int(round(REPORT_DISPLAY_TOP_PERCENT * 100))}%; background = STD; labels = ROI rank"),
-                    panel(f"{display_name_final} segmentation map", final_overlay_info["png"], source=str(final_analysis_mask), note=f"Report display top percent = {int(round(REPORT_DISPLAY_TOP_PERCENT * 100))}%; background = STD; labels = ROI rank"),
+                    panel("Raw segmentation map", raw_overlay_info["png"], source=str(raw_analysis_mask), note=f"{raw_overlay_info.get('display_note') or ''}; background = STD; labels = ROI rank"),
+                    panel(f"{display_name_final} segmentation map", final_overlay_info["png"], source=str(final_analysis_mask), note=f"{final_overlay_info.get('display_note') or ''}; background = STD; labels = ROI rank"),
                 ]},
-                {"layout": "grid-1", "panels": [panel("Downstream count comparison", down_count_png, source=str(run_root / 'segmentation' / 'summary.json'), note="Counts preserve analysis summary semantics")]},
                 {"layout": "grid-2", "panels": [
                     panel("Paired trace numbered map", paired_assets.get("mask_png"), source=str(paired_assets.get("labelmask_tif") or ""), note="Numbering matches trace panel"),
                     panel("Paired trace curves", paired_assets.get("curve_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="Raw vs NeuroPilot traces on identical ROI anchors"),
@@ -2656,7 +2830,7 @@ def build_deterministic_report(
                     panel(f"{display_name_final} cell correlation heatmap", paired_assets.get("final_corr_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="All final analysis ROI shown; ROI order = final analysis rank ascending; value = Pearson correlation; colorbar = [-1, 1]"),
                 ]},
                 {"layout": "grid-1", "panels": [
-                    panel(f"{display_name_final} cell temporal heatmap", paired_assets.get("final_trace_heatmap_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="All final analysis ROI shown; ROI order = final analysis rank ascending; x-axis labels = time in seconds; colormap = RdBu_r; bin count = min(1000, frames); value = per-cell Z-score after binning; cells are rendered with square heatmap elements"),
+                    panel(f"{display_name_final} cell temporal heatmap", paired_assets.get("final_trace_heatmap_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="All final analysis ROI shown; ROI order = final analysis rank ascending; x-axis labels = time in seconds; colormap = RdBu_r; bin count = min(1000, frames); value = per-cell Z-score after binning; row height adapts to keep a stable panel height"),
                 ]},
             ],
             "metric_style": "metric-compact",
@@ -2670,7 +2844,7 @@ def build_deterministic_report(
                 _kv("paired trace displayed count", paired_assets.get("displayed_count", "N/A")),
                 _kv("heatmap ROI count", paired_assets.get("all_selected_count", "N/A")),
             ],
-            "caption": f"Downstream visualization keeps the analysis counts unchanged while using a larger deterministic report-only subset for segmentation overview on STD backgrounds with ROI-rank labels. Paired traces remain a compact top-ROI view, while the correlation and temporal heatmaps now show the full final analysis ROI set in rank order, with the temporal axis labeled in seconds and the temporal heatmap rendered with square cells.",
+            "caption": f"Downstream visualization shows all analysis ROI when the count is <= {REPORT_SEGMENTATION_SHOW_ALL_BELOW}, otherwise it keeps the top {int(round(REPORT_DISPLAY_TOP_PERCENT * 100))}% with a minimum of {REPORT_SEGMENTATION_MIN_DISPLAY_COUNT} masks. Paired traces use all final analysis ROI when the count is <= {REPORT_TRACE_MIN_DISPLAY_COUNT}, otherwise they show the top {REPORT_TRACE_MIN_DISPLAY_COUNT} by final analysis rank. Correlation and temporal heatmaps continue to show the full final analysis ROI set in rank order, with the temporal axis labeled in seconds and adaptive temporal-heatmap row height for sparse ROI sets.",
         },
         {
             "kicker": "Section D",
@@ -2789,8 +2963,8 @@ def build_deterministic_report(
             "main_grid_columns": ["single frame", "STD", "MIP"],
             "crop_grid": "2x3",
             "kymograph_bundle": "STD line map + 2 x (Raw vs NeuroPilot kymograph)",
-    "quantitative_bar_panel": "Raw vs NeuroPilot grouped bar charts for fixed-ROI SNR proxy, motion mean, motion p95 and bleaching",
-            "motion_curve_panel": "Frame-wise rigid motion magnitude in μm",
+    "quantitative_bar_panel": "Raw vs NeuroPilot grouped bar charts for fixed-ROI SNR proxy, jitter mean, jitter p95 and bleaching",
+            "motion_curve_panel": "Frame-to-frame residual rigid jitter in um",
         },
         "roi_crop_regions": [roi_crop_region],
         "zoom_regions": zoom_regions,
@@ -2810,16 +2984,18 @@ def build_deterministic_report(
             "neuropilot_summary": _summary_array(np.asarray(final_corr_info["curve"], dtype=np.float32)),
         },
         "motion_curve": {
-            "source": "rigid_shift_magnitude",
+            "source": "frame_to_frame_residual_rigid_jitter",
             "x_axis": "frame",
-            "y_axis": "motion_magnitude_um",
+            "y_axis": "frame_to_frame_jitter_um",
             "pixel_size_um_used": pixel_size_used,
             "raw_shifts_npy": str(raw_shifts_npy) if raw_shifts_npy else None,
             "neuropilot_shifts_npy": str(final_shifts_npy) if final_shifts_npy else None,
-            "raw_motion_mean_um": _px_to_um(comp_final.get("motion_before_after", {}).get("raw", {}).get("motion_mean_px"), pixel_size_used),
-            "neuropilot_motion_mean_um": _px_to_um(comp_final.get("motion_before_after", {}).get("final", {}).get("motion_mean_px"), pixel_size_used),
-            "raw_motion_p95_um": _px_to_um(comp_final.get("motion_before_after", {}).get("raw", {}).get("motion_p95_px"), pixel_size_used),
-            "neuropilot_motion_p95_um": _px_to_um(comp_final.get("motion_before_after", {}).get("final", {}).get("motion_p95_px"), pixel_size_used),
+            "semantic_note": "stability_proxy_estimated_from_displayed_stacks_not_internal_pylog_motion_field",
+            "final_stack_semantic": final_sidecar.get("source_semantic"),
+            "raw_jitter_mean_um": _px_to_um(raw_motion_metric_for_report.get("frame_to_frame_jitter", {}).get("jitter_mean_px"), pixel_size_used),
+            "neuropilot_jitter_mean_um": _px_to_um(final_motion_metric_for_report.get("frame_to_frame_jitter", {}).get("jitter_mean_px"), pixel_size_used),
+            "raw_jitter_p95_um": _px_to_um(raw_motion_metric_for_report.get("frame_to_frame_jitter", {}).get("jitter_p95_px"), pixel_size_used),
+            "neuropilot_jitter_p95_um": _px_to_um(final_motion_metric_for_report.get("frame_to_frame_jitter", {}).get("jitter_p95_px"), pixel_size_used),
             "artifact_png": str(motion_curve_png),
         },
         "label_alias": {"final_display_name": display_name_final},
@@ -2834,7 +3010,7 @@ def build_deterministic_report(
             "temporal_bin_target": 1000,
             "temporal_axis_unit": "seconds_using_fps",
             "temporal_heatmap_colormap": "RdBu_r",
-            "temporal_heatmap_cell_aspect": "square",
+            "temporal_heatmap_cell_aspect": "adaptive_row_height_fixed_panel",
         },
         "section_structure": section_structure,
         "asset_embedding_status": {
@@ -2849,7 +3025,7 @@ def build_deterministic_report(
                 "dynamic_range": raw_metrics.get("data_summary", {}).get("dynamic_range"),
                 "bleaching": raw_metrics.get("bleaching_trend"),
                 "snr": raw_metrics.get("snr_metric"),
-                "rigid_motion": raw_metrics.get("rigid_motion_metric"),
+                "rigid_motion": raw_motion_metric_for_report,
             },
             "integrated_final_improvement": {
                 **comp_final,
@@ -2858,6 +3034,10 @@ def build_deterministic_report(
                 "motion_curve_png": str(motion_curve_png),
                 "correlation_curve_csv": str(corr_curve_csv),
                 "used_intermediate_sections": bool(report_use_intermediate_sections),
+                "report_motion_metrics": {
+                    "raw": raw_motion_metric_for_report,
+                    "final": final_motion_metric_for_report,
+                },
                 "intermediate_references": {
                     "raw_vs_denoise_json": str(run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_denoise.json"),
                     "raw_vs_motion_json": str(run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_motion.json"),

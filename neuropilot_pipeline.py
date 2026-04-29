@@ -273,6 +273,20 @@ def parse_cli_args() -> argparse.Namespace:
         help="GPU index or comma-separated GPU indices, for example 0 or 0,1.",
     )
     parser.add_argument(
+        "--um-per-pixel",
+        dest="um_per_pixel",
+        type=float,
+        default=None,
+        help="Microns per pixel used by report generation and downstream pre-segmentation profiling.",
+    )
+    parser.add_argument(
+        "--frame-rate",
+        dest="frame_rate",
+        type=float,
+        default=None,
+        help="Frame rate in Hz used by report generation and downstream segmentation settings.",
+    )
+    parser.add_argument(
         "--downstream-env",
         dest="downstream_env",
         default=None,
@@ -350,7 +364,7 @@ DOWNSTREAM_PYTHON_EXECUTABLE = DOWNSTREAM_PYTHON_EXECUTABLE_RAW or None
 
 # Report config (Step 8, deterministic report layer only)
 REPORT_IMAGING_MODALITY = _env_text("NEUROPILOT_REPORT_IMAGING_MODALITY", "2p")
-REPORT_PIXEL_SIZE_UM = _env_float("NEUROPILOT_REPORT_PIXEL_SIZE_UM", 0.709)
+REPORT_PIXEL_SIZE_UM = _env_float("NEUROPILOT_REPORT_PIXEL_SIZE_UM", 0.645)
 REPORT_FPS_HZ = _env_float("NEUROPILOT_REPORT_FPS_HZ", 10.0)
 REPORT_DISPLAY_NAME_FINAL = _env_text("NEUROPILOT_REPORT_DISPLAY_NAME", "NeuroPilot")
 REPORT_EMBED_ASSETS = _env_bool("NEUROPILOT_REPORT_EMBED_ASSETS", True)
@@ -371,16 +385,16 @@ DOWNSTREAM_CONFIG = {
         "python_executable": DOWNSTREAM_PYTHON_EXECUTABLE,
     },
     "segmentation_config": {
-        "fs_hz": 10,
+        "fs_hz": REPORT_FPS_HZ,
         "nplanes": 1,
         "nchannels": 1,
-        "do_registration": True,
+        "do_registration": False,
         "nonrigid": False,
-        "diameter_px": 32,
-        "threshold_scaling": 0.7,
-        "aspect_max": 5.0,
-        "max_overlap": 0.75,
-        "min_area_px": 20,
+        "diameter_px": 16,
+        "threshold_scaling": 1.0,
+        "aspect_max": 2.0,
+        "max_overlap": 0.45,
+        "min_area_px": 40,
         "neuropil_extract": True,
         "inner_neuropil_radius": 2,
         "min_neuropil_pixels": 80,
@@ -389,6 +403,14 @@ DOWNSTREAM_CONFIG = {
         "norm_p_low": 5.0,
         "norm_p_high": 99.5,
         "delete_temp_movie": True,
+    },
+    "presegmentation_config": {
+        "enabled": True,
+        "target_mode": "soma",
+        "pixel_size_um": REPORT_PIXEL_SIZE_UM,
+        "fps_hz": REPORT_FPS_HZ,
+        "norm_p_low": 5.0,
+        "norm_p_high": 99.5,
     },
     "selection_config": {
         "min_largest_cc_area": 60,
@@ -1006,15 +1028,55 @@ def init_stack_state(
 
     raw_metrics_dir = run_root / "metrics" / "input"
     raw_metrics_json_path = raw_metrics_dir / f"{raw_tif_path.stem}_metrics.json"
+
+    def _infer_tiff_shape_thw(tif_path: Path) -> list[int] | None:
+        try:
+            with tiff.TiffFile(str(tif_path)) as tf:
+                series = tf.series[0] if getattr(tf, "series", None) else None
+                if series is None:
+                    return None
+                pages = getattr(series, "pages", None)
+                if pages is not None and len(pages) > 1:
+                    frame0 = pages[0].asarray()
+                    frame0 = frame0.squeeze()
+                    if frame0.ndim == 2:
+                        return [int(len(pages)), int(frame0.shape[0]), int(frame0.shape[1])]
+                shape = tuple(int(x) for x in series.shape)
+                axes = str(getattr(series, "axes", "") or "").upper()
+                if len(shape) == len(axes) and "Y" in axes and "X" in axes:
+                    y_idx = axes.index("Y")
+                    x_idx = axes.index("X")
+                    frames = 1
+                    for idx, dim in enumerate(shape):
+                        if idx not in {y_idx, x_idx}:
+                            frames *= int(dim)
+                    return [int(frames), int(shape[y_idx]), int(shape[x_idx])]
+                if len(shape) == 3 and shape[1] >= 16 and shape[2] >= 16:
+                    return [int(shape[0]), int(shape[1]), int(shape[2])]
+        except Exception:
+            return None
+        return None
+
     if raw_metrics_json_path.exists():
         raw_metrics = read_json_if_exists(raw_metrics_json_path)
         raw_metrics_mask_path = Path(
             str((raw_metrics or {}).get("artifacts", {}).get("snr_roi_mask_npy") or "")
         )
+        expected_shape_thw = _infer_tiff_shape_thw(raw_tif_path)
+        cached_shape_thw = (raw_metrics or {}).get("data_summary", {}).get("shape_thw")
+        try:
+            cached_shape_norm = [int(x) for x in cached_shape_thw] if isinstance(cached_shape_thw, (list, tuple)) else None
+        except Exception:
+            cached_shape_norm = None
+        shape_mismatch = (
+            expected_shape_thw is not None
+            and cached_shape_norm != expected_shape_thw
+        )
         if (
             raw_metrics is None
             or raw_metrics.get("schema_version") != "pipeline_metrics.v2"
             or not raw_metrics_mask_path.exists()
+            or shape_mismatch
         ):
             raw_metrics = compute_metrics_for_tif(raw_tif_path, raw_metrics_dir)
     else:
@@ -1594,6 +1656,11 @@ def run_one_folder(folder_name: str) -> None:
             "run_status_path": downstream_result.get("run_status_path"),
             "summary_path": downstream_result.get("summary_path"),
             "comparison_path": downstream_result.get("comparison_path"),
+            "requested_config_path": downstream_result.get("requested_config_path"),
+            "effective_config_path": downstream_result.get("effective_config_path"),
+            "presegmentation_profile_json": downstream_result.get("presegmentation_profile_json"),
+            "presegmentation_suggested_config_json": downstream_result.get("presegmentation_suggested_config_json"),
+            "presegmentation_report_html": downstream_result.get("presegmentation_report_html"),
         }
 
         write_json(state["manifests_dir"] / "pipeline_manifest.json", state["pipeline_manifest"])
@@ -1643,7 +1710,8 @@ def run_one_folder(folder_name: str) -> None:
 # =============================================================================
 
 def main():
-    global directory_path, subfolder_list, RESULTS_PATH, PIPELINE_LLM_MODE, IS_CELL_DATA, GPU, DOWNSTREAM_ENV_NAME
+    global directory_path, subfolder_list, RESULTS_PATH, PIPELINE_LLM_MODE
+    global IS_CELL_DATA, GPU, DOWNSTREAM_ENV_NAME, REPORT_PIXEL_SIZE_UM, REPORT_FPS_HZ
 
     args = parse_cli_args()
     if args.input_dir:
@@ -1664,6 +1732,19 @@ def main():
         GPU = str(args.gpu).strip()
         os.environ["NEUROPILOT_GPU"] = GPU
         os.environ["CUDA_VISIBLE_DEVICES"] = GPU
+    if args.um_per_pixel is not None:
+        if float(args.um_per_pixel) <= 0:
+            raise ValueError("--um-per-pixel must be positive.")
+        REPORT_PIXEL_SIZE_UM = float(args.um_per_pixel)
+        os.environ["NEUROPILOT_REPORT_PIXEL_SIZE_UM"] = str(REPORT_PIXEL_SIZE_UM)
+        DOWNSTREAM_CONFIG.setdefault("presegmentation_config", {})["pixel_size_um"] = REPORT_PIXEL_SIZE_UM
+    if args.frame_rate is not None:
+        if float(args.frame_rate) <= 0:
+            raise ValueError("--frame-rate must be positive.")
+        REPORT_FPS_HZ = float(args.frame_rate)
+        os.environ["NEUROPILOT_REPORT_FPS_HZ"] = str(REPORT_FPS_HZ)
+        DOWNSTREAM_CONFIG.setdefault("segmentation_config", {})["fs_hz"] = REPORT_FPS_HZ
+        DOWNSTREAM_CONFIG.setdefault("presegmentation_config", {})["fps_hz"] = REPORT_FPS_HZ
     if args.downstream_env:
         DOWNSTREAM_ENV_NAME = str(args.downstream_env).strip()
         os.environ["NEUROPILOT_DOWNSTREAM_ENV_NAME"] = DOWNSTREAM_ENV_NAME
@@ -1678,6 +1759,8 @@ def main():
     print("[RESULTS_ROOT] =>", Path(RESULTS_PATH).expanduser())
     print("[SUBFOLDERS] =>", subfolder_list)
     print("[GPU] =>", GPU)
+    print("[UM_PER_PIXEL] =>", REPORT_PIXEL_SIZE_UM)
+    print("[FRAME_RATE_HZ] =>", REPORT_FPS_HZ)
     print("[DOWNSTREAM_ENV] =>", DOWNSTREAM_CONFIG.get("runner_config", {}).get("env_name"))
     print("[LLM_MODE] =>", pipeline_mode)
     print("[LLM_BACKEND_EFFECTIVE] =>", resolved_backend)
