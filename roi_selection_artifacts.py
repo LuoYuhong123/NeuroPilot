@@ -196,6 +196,33 @@ def rank_roi_ids_by_trace_max(roi_ids: np.ndarray, trace_max_all: np.ndarray) ->
     order = np.lexsort((roi_ids, -scores))  # primary: -score, tie: rid
     return roi_ids[order]
 
+def _safe_float_score(value, default: float = -np.inf) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if math.isnan(score):
+        return float(default)
+    return score
+
+def _rank_analysis_info_by_trace_max(analysis_info: list[dict]) -> list[dict]:
+    """
+    Rank imported ROI definitions without assuming rid is a Suite2p row index.
+
+    Pre-segmentation guidance can add candidate-only masks with synthetic ids
+    such as 100001. Those masks do not exist in F.npy, so their score must come
+    from the per-row trace_max field already materialized in analysis_info.
+    """
+    return sorted(
+        analysis_info,
+        key=lambda d: (
+            -_safe_float_score(d.get("trace_max")),
+            -int(d.get("largest_cc_area", 0) or 0),
+            int(d.get("preseg_candidate_label", 0)),
+            int(d.get("rid", 0)),
+        ),
+    )
+
 def make_hd_image_nearest(img: np.ndarray, upsample: int) -> np.ndarray:
     if upsample <= 1:
         return img.copy()
@@ -623,10 +650,7 @@ def select_rois_and_build_artifacts(
         _write_json(roi_selection_dir / "selection_summary.json", summary)
         return summary
 
-    kept_rids = np.array([d["rid"] for d in analysis_info], dtype=int)
-    ranked_rids = rank_roi_ids_by_trace_max(kept_rids, trace_max_all)
-    info_map = {int(d["rid"]): d for d in analysis_info}
-    ranked_info = [info_map[int(rid)] for rid in ranked_rids]
+    ranked_info = _rank_analysis_info_by_trace_max(analysis_info)
     for rank, d in enumerate(ranked_info, start=1):
         d["rank"] = rank
 
@@ -797,7 +821,7 @@ def select_rois_and_build_artifacts(
     trace_parse = {
         "trace_count": int(F.shape[0]) if isinstance(F, np.ndarray) and F.ndim == 2 else 0,
         "trace_selection_rule": f"top trace max among display subset, top_n={int(cfg['trace_examples_top_n'])}",
-        "trace_max_summary": _summary_of_array(np.asarray(trace_max_all[selected_rids])) if len(selected_rids) > 0 else _summary_of_array(np.array([])),
+        "trace_max_summary": _summary_of_array(np.asarray([_safe_float_score(d.get("trace_max")) for d in selected_info], dtype=np.float64)) if len(selected_info) > 0 else _summary_of_array(np.array([])),
         "F_summary": _summary_of_array(F.flatten()) if isinstance(F, np.ndarray) else _summary_of_array(np.array([])),
         "Fneu_summary": _summary_of_array(Fneu.flatten()) if isinstance(Fneu, np.ndarray) else _summary_of_array(np.array([])),
         "spks_summary": _summary_of_array(spks.flatten()) if isinstance(spks, np.ndarray) else _summary_of_array(np.array([])),

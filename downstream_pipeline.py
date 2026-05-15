@@ -22,6 +22,20 @@ import tifffile as tiff
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+REPORT_AXIS_TICK_FONTSIZE = 8.0
+REPORT_AXIS_LABEL_FONTSIZE = 9.0
+REPORT_PANEL_TITLE_FONTSIZE = 10.0
+REPORT_CORR_HEATMAP_MAX_SIZE_IN = 10.8
+
+plt.rcParams.update(
+    {
+        "font.family": ["Arial"],
+        "font.sans-serif": ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"],
+        "xtick.labelsize": REPORT_AXIS_TICK_FONTSIZE,
+        "ytick.labelsize": REPORT_AXIS_TICK_FONTSIZE,
+    }
+)
+
 
 def _write_json(path: Path, payload: dict):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -581,23 +595,73 @@ def _zscore_trace_rows(traces: np.ndarray) -> np.ndarray:
     return out
 
 
+def _smooth_trace_rows_for_sorting(traces: np.ndarray) -> np.ndarray:
+    traces = np.asarray(traces, dtype=np.float32)
+    if traces.ndim != 2 or traces.shape[1] < 3:
+        return traces.astype(np.float32, copy=False)
+    kernel_len = min(21, max(3, int(traces.shape[1] // 80) * 2 + 1))
+    kernel = np.ones((kernel_len,), dtype=np.float32) / float(kernel_len)
+    return np.vstack([np.convolve(row, kernel, mode="same") for row in traces]).astype(np.float32, copy=False)
+
+
+def _rastermap_like_row_order(zscore: np.ndarray, n_time_groups: int = 32) -> np.ndarray:
+    zscore = np.asarray(zscore, dtype=np.float32)
+    if zscore.ndim != 2 or zscore.shape[0] <= 1:
+        return np.arange(zscore.shape[0] if zscore.ndim == 2 else 0, dtype=np.int32)
+    smoothed = _smooth_trace_rows_for_sorting(zscore)
+    positive = np.maximum(smoothed, 0.0)
+    activity = np.sum(positive, axis=1)
+    active = activity > 1e-8
+    peak_bins = np.argmax(smoothed, axis=1).astype(np.int32)
+    if not np.any(active):
+        return np.arange(zscore.shape[0], dtype=np.int32)
+
+    active_idx = np.flatnonzero(active)
+    inactive_idx = np.flatnonzero(~active)
+    time_bins = max(1, int(zscore.shape[1]))
+    group_count = max(1, min(int(n_time_groups), time_bins, int(active_idx.size)))
+    peak_groups = np.floor(peak_bins[active_idx] * group_count / max(time_bins, 1)).astype(np.int32)
+    peak_groups = np.clip(peak_groups, 0, group_count - 1)
+    ordered: list[int] = []
+    for group in range(group_count):
+        group_idx = active_idx[peak_groups == group]
+        if group_idx.size == 0:
+            continue
+        group_idx = group_idx[np.argsort(peak_bins[group_idx], kind="stable")]
+        if group_idx.size >= 3:
+            features = positive[group_idx]
+            norms = np.linalg.norm(features, axis=1, keepdims=True)
+            features = features / np.maximum(norms, 1e-8)
+            centered = features - np.mean(features, axis=0, keepdims=True)
+            try:
+                _, _, vh = np.linalg.svd(centered, full_matrices=False)
+                projection = centered @ vh[0]
+                if np.corrcoef(projection, peak_bins[group_idx].astype(np.float32))[0, 1] < 0:
+                    projection = -projection
+                group_idx = group_idx[np.lexsort((projection, peak_bins[group_idx]))]
+            except np.linalg.LinAlgError:
+                pass
+        ordered.extend(int(i) for i in group_idx)
+    ordered.extend(int(i) for i in inactive_idx)
+    return np.asarray(ordered, dtype=np.int32)
+
+
 def _heatmap_tick_positions(count: int) -> tuple[np.ndarray, list[int]]:
     if count <= 0:
         return np.asarray([], dtype=np.int32), []
-    ticks = np.arange(0, count, dtype=np.int32)
-    return ticks, [int(x) for x in ticks]
+    target = float(count) / 5.0
+    interval = max(10, int(math.floor(target / 10.0 + 0.5) * 10))
+    labels = np.arange(interval, count + 1, interval, dtype=np.int32)
+    return labels - 1, [int(x) for x in labels]
+
+
+def _rastermap_like_row_order_from_traces(traces: np.ndarray, target_bin_count: int = 1000) -> np.ndarray:
+    binned, _ = _bin_trace_matrix(traces, target_bin_count=target_bin_count)
+    return _rastermap_like_row_order(_zscore_trace_rows(binned))
 
 
 def _heatmap_tick_fontsize(count: int) -> float:
-    if count <= 20:
-        return 8.0
-    if count <= 40:
-        return 7.0
-    if count <= 80:
-        return 6.0
-    if count <= 140:
-        return 5.0
-    return 4.0
+    return REPORT_AXIS_TICK_FONTSIZE
 
 
 def _save_trace_corr_heatmap_png(
@@ -605,6 +669,7 @@ def _save_trace_corr_heatmap_png(
     roi_defs: list[dict[str, Any]],
     out_png: Path,
     title: str,
+    row_order: np.ndarray | None = None,
 ) -> str:
     out_png.parent.mkdir(parents=True, exist_ok=True)
     if len(roi_defs) == 0 or corr_matrix.size == 0:
@@ -617,27 +682,32 @@ def _save_trace_corr_heatmap_png(
         return str(out_png)
 
     n = len(roi_defs)
-    size = float(np.clip(0.12 * n + 6.0, 6.2, 18.0))
+    corr_display = np.asarray(corr_matrix, dtype=np.float32)
+    if row_order is not None and len(row_order) == n:
+        order = np.asarray(row_order, dtype=np.int32)
+        corr_display = corr_display[np.ix_(order, order)]
+    size = float(np.clip(0.035 * n + 7.0, 7.5, REPORT_CORR_HEATMAP_MAX_SIZE_IN))
     tick_fontsize = _heatmap_tick_fontsize(n)
     fig, ax = plt.subplots(figsize=(size, size), dpi=140)
     cmap = plt.get_cmap("bwr")
     cmap = cmap.copy() if hasattr(cmap, "copy") else cmap
     if hasattr(cmap, "set_bad"):
         cmap.set_bad("#cfcfcf")
-    im = ax.imshow(corr_matrix, cmap=cmap, vmin=-1.0, vmax=1.0, interpolation="nearest", origin="upper")
-    rank_labels = [int(roi["rank"]) for roi in roi_defs]
+    im = ax.imshow(corr_display, cmap=cmap, vmin=-1.0, vmax=1.0, interpolation="nearest", origin="upper")
     ticks, tick_idx = _heatmap_tick_positions(n)
     if len(ticks) > 0:
         ax.set_xticks(ticks)
         ax.set_yticks(ticks)
-        ax.set_xticklabels([str(rank_labels[i]) for i in tick_idx], rotation=90, fontsize=tick_fontsize)
-        ax.set_yticklabels([str(rank_labels[i]) for i in tick_idx], fontsize=tick_fontsize)
-    ax.set_xlabel("Selected ROI (final rank)")
-    ax.set_ylabel("Selected ROI (final rank)")
-    ax.set_title(title)
+        ax.set_xticklabels([str(i) for i in tick_idx], rotation=90, fontsize=tick_fontsize)
+        ax.set_yticklabels([str(i) for i in tick_idx], fontsize=tick_fontsize)
+    ax.tick_params(axis="both", which="major", labelsize=tick_fontsize)
+    ax.set_xlabel("Sorted cell index", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("Sorted cell index", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    ax.set_title(title, fontsize=REPORT_PANEL_TITLE_FONTSIZE)
     ax.set_aspect("equal")
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Pearson correlation")
+    cbar.set_label("Pearson correlation", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    cbar.ax.tick_params(labelsize=REPORT_AXIS_TICK_FONTSIZE)
     fig.tight_layout()
     fig.savefig(str(out_png), dpi=140)
     plt.close(fig)
@@ -650,6 +720,7 @@ def _save_trace_temporal_heatmap_png(
     out_png: Path,
     title: str,
     target_bin_count: int = 1000,
+    row_order: np.ndarray | None = None,
 ) -> tuple[str, int]:
     out_png.parent.mkdir(parents=True, exist_ok=True)
     if len(roi_defs) == 0 or np.asarray(traces).size == 0:
@@ -663,6 +734,10 @@ def _save_trace_temporal_heatmap_png(
 
     binned, bin_count = _bin_trace_matrix(traces, target_bin_count=target_bin_count)
     zscore = _zscore_trace_rows(binned)
+    if row_order is None or len(row_order) != len(roi_defs):
+        row_order = _rastermap_like_row_order(zscore)
+    row_order = np.asarray(row_order, dtype=np.int32)
+    zscore_display = zscore[row_order] + 3.0
     scale = min(0.12, 20.0 / max(bin_count, 1), 14.0 / max(len(roi_defs), 1))
     fig_w = max(7.5, float(bin_count) * scale + 1.6)
     fig_h = max(4.5, float(len(roi_defs)) * scale + 1.6)
@@ -672,17 +747,18 @@ def _save_trace_temporal_heatmap_png(
     cmap = cmap.copy() if hasattr(cmap, "copy") else cmap
     if hasattr(cmap, "set_bad"):
         cmap.set_bad("#cfcfcf")
-    im = ax.imshow(zscore, cmap=cmap, vmin=-3.0, vmax=3.0, aspect="equal", interpolation="nearest", origin="upper")
-    rank_labels = [int(roi["rank"]) for roi in roi_defs]
-    ticks, tick_idx = _heatmap_tick_positions(len(roi_defs))
+    im = ax.imshow(zscore_display, cmap=cmap, vmin=0.0, vmax=6.0, aspect="equal", interpolation="nearest", origin="upper")
+    ticks, tick_idx = _heatmap_tick_positions(len(row_order))
     if len(ticks) > 0:
         ax.set_yticks(ticks)
-        ax.set_yticklabels([str(rank_labels[i]) for i in tick_idx], fontsize=tick_fontsize)
-    ax.set_xlabel(f"Time bin (count={bin_count})")
-    ax.set_ylabel("Selected ROI (final rank)")
-    ax.set_title(title)
+        ax.set_yticklabels([str(i) for i in tick_idx], fontsize=tick_fontsize)
+    ax.tick_params(axis="both", which="major", labelsize=tick_fontsize)
+    ax.set_xlabel(f"Time bin (count={bin_count})", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("Sorted cell index", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    ax.set_title(title, fontsize=REPORT_PANEL_TITLE_FONTSIZE)
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Per-cell Z-score")
+    cbar.set_label("Per-cell Z-score + 3", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    cbar.ax.tick_params(labelsize=REPORT_AXIS_TICK_FONTSIZE)
     fig.tight_layout()
     fig.savefig(str(out_png), dpi=140)
     plt.close(fig)
@@ -718,10 +794,7 @@ def _save_paired_trace_plot(
         corr_txt = "NA" if per_roi_corr[i] is None else f"{per_roi_corr[i]:.3f}"
         ax.plot(raw_norm, color="#d55e00", linewidth=0.9, alpha=0.9, label="raw")
         ax.plot(final_norm, color="#0072b2", linewidth=0.9, alpha=0.9, label="final")
-        ax.set_title(
-            f"rank={int(roi['rank'])} rid={int(roi['rid'])} px={int(roi['pixel_count'])} corr={corr_txt}",
-            fontsize=9,
-        )
+        ax.set_title(f"{i + 1}. rid={int(roi['rid'])} px={int(roi['pixel_count'])} corr={corr_txt}", fontsize=9)
         ax.grid(True, alpha=0.25)
         if i == 0:
             ax.legend(loc="upper right", fontsize=8, frameon=False)
@@ -744,6 +817,52 @@ def _crop_mask_with_pad(mask: np.ndarray, pad: int = 8) -> np.ndarray:
     x0 = max(int(xs.min()) - pad, 0)
     x1 = min(int(xs.max()) + pad + 1, mask.shape[1])
     return mask[y0:y1, x0:x1].astype(np.uint8)
+
+
+def _fill_mask_center_holes(mask: np.ndarray, allowed_fill_mask: np.ndarray | None = None) -> np.ndarray:
+    mask = np.asarray(mask, dtype=bool)
+    if mask.ndim != 2 or not np.any(mask):
+        return mask
+    ys, xs = np.where(mask)
+    y0 = max(0, int(ys.min()) - 1)
+    y1 = min(mask.shape[0], int(ys.max()) + 2)
+    x0 = max(0, int(xs.min()) - 1)
+    x1 = min(mask.shape[1], int(xs.max()) + 2)
+    sub = np.asarray(mask[y0:y1, x0:x1], dtype=bool)
+    inv = ~sub
+    exterior = np.zeros_like(sub, dtype=bool)
+    stack: list[tuple[int, int]] = []
+    for x in range(inv.shape[1]):
+        if inv[0, x]:
+            stack.append((0, x))
+        if inv[-1, x]:
+            stack.append((inv.shape[0] - 1, x))
+    for y in range(1, max(1, inv.shape[0] - 1)):
+        if inv[y, 0]:
+            stack.append((y, 0))
+        if inv[y, -1]:
+            stack.append((y, inv.shape[1] - 1))
+    while stack:
+        y, x = stack.pop()
+        if exterior[y, x] or not inv[y, x]:
+            continue
+        exterior[y, x] = True
+        if y > 0:
+            stack.append((y - 1, x))
+        if y + 1 < inv.shape[0]:
+            stack.append((y + 1, x))
+        if x > 0:
+            stack.append((y, x - 1))
+        if x + 1 < inv.shape[1]:
+            stack.append((y, x + 1))
+    holes = inv & ~exterior
+    if allowed_fill_mask is not None:
+        holes &= np.asarray(allowed_fill_mask[y0:y1, x0:x1], dtype=bool)
+    if not np.any(holes):
+        return mask
+    out = mask.copy()
+    out[y0:y1, x0:x1] |= holes
+    return out
 
 
 def _save_paired_mask_artifacts(
@@ -770,8 +889,15 @@ def _save_paired_mask_artifacts(
 
     h, w = roi_defs[0]["mask"].shape
     labelmask = np.zeros((h, w), dtype=np.uint16)
+    raw_union = np.zeros((h, w), dtype=bool)
     for roi in roi_defs:
-        labelmask[np.asarray(roi["mask"], dtype=bool)] = np.uint16(int(roi["rank"]))
+        raw_union |= np.asarray(roi["mask"], dtype=bool)
+    display_masks = [
+        _fill_mask_center_holes(np.asarray(roi["mask"], dtype=bool), allowed_fill_mask=(~raw_union | np.asarray(roi["mask"], dtype=bool)))
+        for roi in roi_defs
+    ]
+    for roi, mask in zip(roi_defs, display_masks):
+        labelmask[mask & (labelmask == 0)] = np.uint16(int(roi["rank"]))
     tiff.imwrite(str(labelmask_tif_path), labelmask, photometric="minisblack", metadata=None)
 
     n = len(roi_defs)
@@ -781,13 +907,10 @@ def _save_paired_mask_artifacts(
     axes_arr = np.atleast_1d(axes).reshape(rows, cols)
     flat_axes = list(axes_arr.flatten())
 
-    for ax, roi in zip(flat_axes, roi_defs):
-        crop = _crop_mask_with_pad(np.asarray(roi["mask"], dtype=bool), pad=8)
+    for idx, (ax, roi, mask) in enumerate(zip(flat_axes, roi_defs, display_masks), start=1):
+        crop = _crop_mask_with_pad(mask, pad=8)
         ax.imshow(crop, cmap="gray", vmin=0, vmax=1)
-        ax.set_title(
-            f"rank={int(roi['rank'])} rid={int(roi['rid'])}\npx={int(roi['pixel_count'])}",
-            fontsize=9,
-        )
+        ax.set_title(f"{idx}. rid={int(roi['rid'])}\npx={int(roi['pixel_count'])}", fontsize=9)
         ax.set_axis_off()
 
     for ax in flat_axes[len(roi_defs):]:
@@ -838,7 +961,14 @@ def _run_paired_trace_extraction(
     if len(all_roi_rows) <= min_trace_display_count:
         trace_display_rows = list(all_roi_rows)
     else:
-        trace_display_rows = list(all_roi_rows[:min_trace_display_count])
+        trace_display_rows = sorted(
+            all_roi_rows,
+            key=lambda row: (
+                -float(row.get("trace_max", 0.0) or 0.0),
+                -int(row.get("final_area_polished", row.get("pixel_count", 0)) or 0),
+                int(row.get("rank", 0) or 0),
+            ),
+        )[:min_trace_display_count]
     roi_defs_display = _load_rank_masks_from_labelmask(artifacts["analysis_mask_uint16_tif"], trace_display_rows)
     all_rank_to_idx = {int(roi["rank"]): idx for idx, roi in enumerate(all_roi_defs)}
     selected_pairs = [
@@ -891,29 +1021,35 @@ def _run_paired_trace_extraction(
 
     raw_corr_matrix_all = _compute_trace_corr_matrix(raw_traces_all)
     final_corr_matrix_all = _compute_trace_corr_matrix(final_traces_all)
+    raw_heatmap_order = _rastermap_like_row_order_from_traces(raw_traces_all)
+    final_heatmap_order = _rastermap_like_row_order_from_traces(final_traces_all)
     raw_corr_heatmap_path = _save_trace_corr_heatmap_png(
         raw_corr_matrix_all,
         all_roi_defs,
         raw_corr_png,
         "Raw ROI Correlation Heatmap (final analysis ROI order)",
+        row_order=raw_heatmap_order,
     )
     final_corr_heatmap_path = _save_trace_corr_heatmap_png(
         final_corr_matrix_all,
         all_roi_defs,
         final_corr_png,
         "Final ROI Correlation Heatmap (final analysis ROI order)",
+        row_order=final_heatmap_order,
     )
     raw_temporal_heatmap_path, raw_temporal_bins = _save_trace_temporal_heatmap_png(
         raw_traces_all,
         all_roi_defs,
         raw_temporal_png,
         "Raw ROI Temporal Heatmap (per-cell Z-score)",
+        row_order=raw_heatmap_order,
     )
     final_temporal_heatmap_path, final_temporal_bins = _save_trace_temporal_heatmap_png(
         final_traces_all,
         all_roi_defs,
         final_temporal_png,
         "Final ROI Temporal Heatmap (per-cell Z-score)",
+        row_order=final_heatmap_order,
     )
 
     roi_rows_out = []
@@ -979,7 +1115,7 @@ def _run_paired_trace_extraction(
         "selected_count": int(len(roi_defs)),
         "top_n_final_rois": int(top_n_final_rois),
         "min_trace_display_count": int(min_trace_display_count),
-        "display_rule": f"show all when final analysis ROI <= {int(min_trace_display_count)}, else show top {int(min_trace_display_count)} by final analysis rank",
+        "display_rule": f"show all when final analysis ROI <= {int(min_trace_display_count)}, else show top {int(min_trace_display_count)} by delta F/F with final ROI area as tie-breaker",
         "roi_ranks": [int(r["rank"]) for r in roi_defs],
         "roi_ids": [int(r["rid"]) for r in roi_defs],
         "all_selected_count": int(len(all_roi_defs)),
@@ -1004,15 +1140,17 @@ def _run_paired_trace_extraction(
         "delta_final_minus_raw_summary": _summary_arr(delta.flatten()),
         "corrcoef_summary": _summary_arr(corr_vals),
         "heatmap_config": {
-            "roi_order": "final_analysis_rank_ascending",
+            "roi_order": "correlation_and_temporal_heatmaps_share_rastermap_like_peak_time_then_local_similarity_order",
             "roi_scope": "final_analysis_set",
+            "cell_axis_labels": "1_based_sorted_cell_index_with_adaptive_decade_ticks",
             "temporal_bin_target": 1000,
             "temporal_bin_count_used": int(final_temporal_bins if final_temporal_bins == raw_temporal_bins else min(raw_temporal_bins, final_temporal_bins)),
             "temporal_bin_count_used_by_stack": {
                 "raw": int(raw_temporal_bins),
                 "final": int(final_temporal_bins),
             },
-            "temporal_normalization": "per_cell_zscore_after_binning",
+            "temporal_normalization": "per_cell_zscore_after_binning_plus_3",
+            "temporal_axis_order": "chronological",
             "corr_metric": "pearson",
         },
         "artifacts": {
@@ -1154,7 +1292,7 @@ def run_downstream_analysis(
     final_seg = run_suite2p_segmentation(final_stack_path, final_root, effective_cfg.get("segmentation_config", {}))
     sel_cfg_final = dict(cfg.get("selection_config", {}))
     sel_cfg_final["asset_prefix"] = "final"
-    if preseg_candidate_labelmask_tif:
+    if preseg_candidate_labelmask_tif and bool(sel_cfg_final.get("use_preseg_guided_roi_masks", False)):
         sel_cfg_final["preseg_guided_analysis"] = True
         sel_cfg_final["preseg_candidate_labelmask_tif"] = str(preseg_candidate_labelmask_tif)
     final_sel = select_rois_and_build_artifacts(
@@ -1168,7 +1306,7 @@ def run_downstream_analysis(
         raw_seg = run_suite2p_segmentation(raw_stack_path, raw_root, effective_cfg.get("segmentation_config", {}))
         sel_cfg_raw = dict(cfg.get("selection_config", {}))
         sel_cfg_raw["asset_prefix"] = "raw"
-        if preseg_candidate_labelmask_tif:
+        if preseg_candidate_labelmask_tif and bool(sel_cfg_raw.get("use_preseg_guided_for_raw", False)):
             sel_cfg_raw["preseg_guided_analysis"] = True
             sel_cfg_raw["preseg_candidate_labelmask_tif"] = str(preseg_candidate_labelmask_tif)
         raw_sel = select_rois_and_build_artifacts(

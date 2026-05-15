@@ -46,6 +46,18 @@ DEFAULT_FPS_HZ = 10.0
 REPORT_TITLE = "NeuroPilot Processing Analysis Report"
 REPORT_KYMOGRAPH_LINE_COUNT = 2
 REPORT_MOTION_METHOD = "background_weighted_phase_correlation_to_median_template"
+REPORT_AXIS_TICK_FONTSIZE = 8.0
+REPORT_AXIS_LABEL_FONTSIZE = 9.0
+REPORT_PANEL_TITLE_FONTSIZE = 10.0
+REPORT_CORR_HEATMAP_MAX_SIZE_IN = 10.8
+REPORT_SCALEBAR_FONT_SIZE = 8.0
+REPORT_SCALEBAR_LINEWIDTH = 2.2
+REPORT_SCALEBAR_TEXT_GAP_FRACTION = 0.03
+REPORT_SCALEBAR_TEXT_GAP_MIN_PX = 8
+REPORT_CROP_SCALEBAR_TEXT_GAP_PX = 2.2
+REPORT_SEGMENTATION_SCALEBAR_TEXT_GAP_PX = 10.0
+REPORT_KYMO_SCALEBAR_FONT_SIZE = 7.0
+REPORT_KYMO_SCALEBAR_TEXT_GAP_PX = 4
 READER_LABELS = {
     "raw": "Raw",
     "denoise": "Denoised",
@@ -76,7 +88,7 @@ MODALITY_CMAPS = {
 }
 
 def _available_report_font_stack() -> list[str]:
-    preferred = ["DejaVu Sans", "Liberation Sans", "Arial", "Helvetica"]
+    preferred = ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"]
     try:
         available = {entry.name for entry in font_manager.fontManager.ttflist}
     except Exception:
@@ -90,7 +102,7 @@ def _available_report_font_stack() -> list[str]:
 REPORT_FONT_FAMILY = _available_report_font_stack()
 REPORT_FONT_PRIMARY = REPORT_FONT_FAMILY[0]
 REPORT_FONT_CSS = ",".join(
-    [f"'{name}'" if " " in name else name for name in REPORT_FONT_FAMILY] + ["sans-serif"]
+    ["'Arial'"] + [f"'{name}'" if " " in name else name for name in REPORT_FONT_FAMILY if name != "Arial"] + ["sans-serif"]
 )
 
 plt.rcParams.update(
@@ -100,8 +112,8 @@ plt.rcParams.update(
         "font.size": 9,
         "axes.titlesize": 10,
         "axes.labelsize": 9,
-        "xtick.labelsize": 8,
-        "ytick.labelsize": 8,
+        "xtick.labelsize": REPORT_AXIS_TICK_FONTSIZE,
+        "ytick.labelsize": REPORT_AXIS_TICK_FONTSIZE,
         "axes.linewidth": 0.8,
         "figure.facecolor": "white",
         "axes.facecolor": "white",
@@ -458,23 +470,32 @@ def _scalebar_label(px_len: int, pixel_size_um: float | None) -> str:
     return f"{physical:.2f} um"
 
 
-def _add_scalebar(ax, image_shape: Sequence[int], pixel_size_um: float | None = None):
+def _add_scalebar(
+    ax,
+    image_shape: Sequence[int],
+    pixel_size_um: float | None = None,
+    text_gap_px: float | None = None,
+):
     h, w = int(image_shape[0]), int(image_shape[1])
     px_len = _choose_scalebar_px((h, w))
     margin_x = max(6, int(round(w * 0.05)))
     margin_y = max(6, int(round(h * 0.06)))
+    if text_gap_px is None:
+        text_gap = max(float(REPORT_SCALEBAR_TEXT_GAP_MIN_PX), float(h) * float(REPORT_SCALEBAR_TEXT_GAP_FRACTION))
+    else:
+        text_gap = max(1.0, float(text_gap_px))
     x0 = w - margin_x - px_len
     x1 = w - margin_x
     y = h - margin_y
-    ax.plot([x0, x1], [y, y], color="white", linewidth=2.2, solid_capstyle="butt")
+    ax.plot([x0, x1], [y, y], color="white", linewidth=REPORT_SCALEBAR_LINEWIDTH, solid_capstyle="butt")
     ax.text(
         (x0 + x1) / 2.0,
-        y - max(8, h * 0.03),
+        y - float(text_gap),
         _scalebar_label(px_len, pixel_size_um),
         color="white",
         ha="center",
         va="bottom",
-        fontsize=8,
+        fontsize=REPORT_SCALEBAR_FONT_SIZE,
         bbox={"facecolor": (0, 0, 0, 0.38), "edgecolor": "none", "pad": 1.2},
     )
 
@@ -692,6 +713,191 @@ def _select_line_coords(region: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _primary_motion_axis(shifts: np.ndarray | None, dominance_ratio: float = 1.15) -> dict[str, Any]:
+    if shifts is None:
+        return {"axis": "horizontal", "dx_p95": None, "dy_p95": None, "selection_rule": "motion_unavailable_horizontal_fallback"}
+    arr = np.asarray(shifts, dtype=np.float32)
+    if arr.ndim != 2 or arr.shape[1] < 2 or arr.shape[0] < 2:
+        return {"axis": "horizontal", "dx_p95": None, "dy_p95": None, "selection_rule": "motion_invalid_horizontal_fallback"}
+    frame_delta = np.diff(arr[:, :2], axis=0)
+    if not np.any(np.isfinite(frame_delta)) or float(np.nanmax(np.abs(frame_delta))) <= 1e-8:
+        frame_delta = arr[:, :2]
+    dx_p95 = float(np.nanpercentile(np.abs(frame_delta[:, 0]), 95))
+    dy_p95 = float(np.nanpercentile(np.abs(frame_delta[:, 1]), 95))
+    if dy_p95 >= dx_p95 * float(dominance_ratio):
+        axis = "vertical"
+    elif dx_p95 >= dy_p95 * float(dominance_ratio):
+        axis = "horizontal"
+    else:
+        axis = "vertical" if dy_p95 >= dx_p95 else "horizontal"
+    return {
+        "axis": axis,
+        "dx_p95": dx_p95,
+        "dy_p95": dy_p95,
+        "selection_rule": "dominant_frame_to_frame_motion_axis",
+    }
+
+
+def _combine_kymograph_structure_map(
+    std_map: np.ndarray,
+    mip_map: np.ndarray | None = None,
+    mean_map: np.ndarray | None = None,
+) -> np.ndarray:
+    layers: list[tuple[float, np.ndarray]] = [(0.30, _normalize_image(std_map))]
+    if mip_map is not None:
+        layers.append((0.20, _normalize_image(mip_map)))
+    if mean_map is not None:
+        layers.append((0.50, _normalize_image(mean_map)))
+    total_weight = float(sum(weight for weight, _ in layers))
+    if total_weight <= 0:
+        return _normalize_image(std_map)
+    out = np.zeros_like(layers[0][1], dtype=np.float32)
+    for weight, layer in layers:
+        if layer.shape == out.shape:
+            out += float(weight) * layer.astype(np.float32, copy=False)
+    return _normalize_image(out / max(total_weight, 1e-8))
+
+
+def _select_motion_adaptive_line_coords(
+    region: dict[str, Any],
+    structure_map: np.ndarray,
+    shifts: np.ndarray | None,
+) -> dict[str, Any]:
+    motion = _primary_motion_axis(shifts)
+    axis = str(motion["axis"])
+    img = _normalize_image(structure_map)
+    h, w = img.shape
+    x0 = max(0, min(w - 1, int(region["x0"])))
+    x1 = max(x0 + 1, min(w, int(region["x1"])))
+    y0 = max(0, min(h - 1, int(region["y0"])))
+    y1 = max(y0 + 1, min(h, int(region["y1"])))
+    crop = img[y0:y1, x0:x1]
+    if crop.size == 0 or min(crop.shape) < 2:
+        coords = _select_line_coords(region)
+        coords["orientation"] = "horizontal"
+        coords["selection_rule"] = "empty_crop_horizontal_fallback"
+        return coords
+
+    def _smooth_profile(profile: np.ndarray) -> np.ndarray:
+        if profile.size < 7:
+            return profile.astype(np.float32, copy=False)
+        kernel_len = min(9, max(3, int(profile.size // 18) * 2 + 1))
+        kernel = np.ones((kernel_len,), dtype=np.float32) / float(kernel_len)
+        return np.convolve(profile.astype(np.float32, copy=False), kernel, mode="same")
+
+    def _segment_bounds(center: int, length: int, total: int) -> tuple[int, int]:
+        length = int(max(2, min(int(length), int(total))))
+        start = int(round(float(center) - (float(length) - 1.0) / 2.0))
+        start = max(0, min(max(0, int(total) - length), start))
+        return start, start + length
+
+    def _score_segment(profile: np.ndarray, center_idx: int, length: int) -> dict[str, Any]:
+        smoothed = _smooth_profile(profile)
+        n_total = int(smoothed.size)
+        start, end = _segment_bounds(int(center_idx), int(length), n_total)
+        seg = smoothed[start:end]
+        n = int(seg.size)
+        center_rel = int(np.clip(int(center_idx) - start, 0, max(n - 1, 0)))
+        edge_len = max(2, int(round(n * 0.15)))
+        center_half = max(2, int(round(n * 0.12)))
+        center_start = max(0, center_rel - center_half)
+        center_end = min(n, center_rel + center_half + 1)
+        center_band = seg[center_start:center_end] if center_end > center_start else seg
+        edge_value = float((np.mean(seg[:edge_len]) + np.mean(seg[-edge_len:])) / 2.0)
+        endpoint_high = float(max(np.percentile(seg[:edge_len], 80), np.percentile(seg[-edge_len:], 80)))
+        center_value = float(np.percentile(center_band, 85)) if center_band.size else 0.0
+        local_floor = float(np.percentile(seg, 25)) if n else 0.0
+        contrast = float(center_value - max(edge_value, local_floor))
+        center_offset = abs(float(center_rel) - (float(n) - 1.0) / 2.0) / max(float(n), 1.0)
+        edge_dark_bonus = max(0.0, 1.0 - endpoint_high)
+        score = center_value * 2.2 + contrast * 4.0 + edge_dark_bonus * 1.8 - center_offset * 1.4
+        return {
+            "score": float(score),
+            "start": int(start),
+            "end": int(end),
+            "bright_idx": int(center_idx),
+            "middle_value": float(center_value),
+            "edge_value": float(edge_value),
+            "contrast": float(contrast),
+            "center_offset": float(center_offset),
+            "length": int(n),
+        }
+
+    cross_radius = 2
+    candidates: list[dict[str, Any]] = []
+    axis_len = int((y1 - y0) if axis == "vertical" else (x1 - x0))
+    axis_total = int(h if axis == "vertical" else w)
+    line_len = int(min(axis_total, max(32, round(axis_len * 1.15))))
+    peak_count = 4
+    if axis == "vertical":
+        for local_x in range(crop.shape[1]):
+            fixed_x = int(x0 + local_x)
+            x_left = max(0, fixed_x - cross_radius)
+            x_right = min(w, fixed_x + cross_radius + 1)
+            profile = np.mean(img[:, x_left:x_right], axis=1)
+            region_profile = _smooth_profile(profile[y0:y1])
+            if region_profile.size == 0:
+                continue
+            peak_rel = np.argsort(region_profile)[-min(peak_count, region_profile.size):]
+            for rel_idx in peak_rel:
+                scored = _score_segment(profile, int(y0 + rel_idx), line_len)
+                scored["fixed"] = fixed_x
+                candidates.append(scored)
+    else:
+        for local_y in range(crop.shape[0]):
+            fixed_y = int(y0 + local_y)
+            y_top = max(0, fixed_y - cross_radius)
+            y_bottom = min(h, fixed_y + cross_radius + 1)
+            profile = np.mean(img[y_top:y_bottom, :], axis=0)
+            region_profile = _smooth_profile(profile[x0:x1])
+            if region_profile.size == 0:
+                continue
+            peak_rel = np.argsort(region_profile)[-min(peak_count, region_profile.size):]
+            for rel_idx in peak_rel:
+                scored = _score_segment(profile, int(x0 + rel_idx), line_len)
+                scored["fixed"] = fixed_y
+                candidates.append(scored)
+    best = max(candidates, key=lambda item: float(item["score"])) if candidates else None
+    if best is None:
+        coords = _select_line_coords(region)
+        coords["orientation"] = "horizontal"
+        coords["selection_rule"] = "no_candidate_horizontal_fallback"
+        return coords
+
+    if axis == "vertical":
+        coords = {
+            "x0": int(best["fixed"]),
+            "y0": int(best["start"]),
+            "x1": int(best["fixed"]),
+            "y1": int(best["end"]) - 1,
+            "num_samples": max(2, int(best["end"]) - int(best["start"])),
+        }
+    else:
+        coords = {
+            "x0": int(best["start"]),
+            "y0": int(best["fixed"]),
+            "x1": int(best["end"]) - 1,
+            "y1": int(best["fixed"]),
+            "num_samples": max(2, int(best["end"]) - int(best["start"])),
+        }
+    coords.update(
+        {
+            "orientation": axis,
+            "selection_rule": "motion_axis_centered_bright_structure_dark_endpoints",
+            "motion_dx_p95_px": motion.get("dx_p95"),
+            "motion_dy_p95_px": motion.get("dy_p95"),
+            "bright_center_position": int(best["bright_idx"]),
+            "line_middle_brightness": float(best["middle_value"]),
+            "line_endpoint_brightness": float(best["edge_value"]),
+            "line_bright_dark_contrast": float(best["contrast"]),
+            "line_center_offset_fraction": float(best["center_offset"]),
+            "line_segment_length_px": int(best["length"]),
+            "sample_half_width_px": int(cross_radius),
+        }
+    )
+    return coords
+
+
 def _compute_temporal_mean_projection(stack_path: str | Path) -> np.ndarray:
     info = _stack_info(stack_path)
     acc = np.zeros((int(info["height_px"]), int(info["width_px"])), dtype=np.float64)
@@ -876,7 +1082,19 @@ def _sample_line(img: np.ndarray, line_coords: dict[str, Any]) -> np.ndarray:
     n = int(line_coords.get("num_samples", max(abs(int(round(x1 - x0))), abs(int(round(y1 - y0))), 2) + 1))
     xs = np.clip(np.round(np.linspace(x0, x1, n)).astype(np.int32), 0, img.shape[1] - 1)
     ys = np.clip(np.round(np.linspace(y0, y1, n)).astype(np.int32), 0, img.shape[0] - 1)
-    return np.asarray(img[ys, xs], dtype=np.float32)
+    half_width = int(max(0, line_coords.get("sample_half_width_px", 0) or 0))
+    if half_width <= 0:
+        return np.asarray(img[ys, xs], dtype=np.float32)
+    samples = []
+    if abs(y1 - y0) <= abs(x1 - x0):
+        for offset in range(-half_width, half_width + 1):
+            ys_off = np.clip(ys + offset, 0, img.shape[0] - 1)
+            samples.append(np.asarray(img[ys_off, xs], dtype=np.float32))
+    else:
+        for offset in range(-half_width, half_width + 1):
+            xs_off = np.clip(xs + offset, 0, img.shape[1] - 1)
+            samples.append(np.asarray(img[ys, xs_off], dtype=np.float32))
+    return np.mean(np.stack(samples, axis=0), axis=0).astype(np.float32, copy=False)
 
 
 def save_kymograph_png(
@@ -1073,6 +1291,7 @@ def save_intensity_grid_png(
     row_labels: Sequence[str] | None = None,
     pixel_size_um: float | None = None,
     imaging_modality: str = DEFAULT_IMAGING_MODALITY,
+    scalebar_text_gap_px: float | None = None,
 ) -> str:
     rows = len(image_rows)
     cols = max((len(row) for row in image_rows), default=0)
@@ -1113,7 +1332,7 @@ def save_intensity_grid_png(
                         fontweight="bold",
                         bbox={"facecolor": (0, 0, 0, 0.40), "edgecolor": "none", "pad": 1.0},
                     )
-            _add_scalebar(ax, img.shape, pixel_size_um=pixel_size_um)
+            _add_scalebar(ax, img.shape, pixel_size_um=pixel_size_um, text_gap_px=scalebar_text_gap_px)
             if row_labels and c == 0 and r < len(row_labels):
                 ax.text(
                     -0.08,
@@ -1163,8 +1382,10 @@ def save_kymograph_bundle_png(
 
     def _add_kymo_scalebar(ax, kymo_shape: Sequence[int]):
         kh, kw = int(kymo_shape[0]), int(kymo_shape[1])
-        margin_x = max(10, int(round(kw * 0.06)))
-        margin_y = max(3, int(round(kh * 0.07)))
+        margin_x = max(38, int(round(kw * 0.07)))
+        margin_y = max(9, int(round(kh * 0.11)))
+        text_gap = int(REPORT_KYMO_SCALEBAR_TEXT_GAP_PX)
+        vertical_text_gap = max(12, int(round(float(text_gap) * float(kw) / max(1.0, 2.0 * float(kh)))))
         spatial_px = _choose_scalebar_px((kh, kh))
         if fps_hz > 0:
             seconds_target = 5.0 if kw / fps_hz >= 5.0 else max(1.0, round((kw / fps_hz) * 0.2, 1))
@@ -1173,33 +1394,33 @@ def save_kymograph_bundle_png(
         else:
             time_frames = max(10, int(round(kw * 0.15)))
         time_frames = int(min(time_frames, max(10, kw - margin_x - 2)))
-        x1 = kw - margin_x
-        x0 = max(2, x1 - time_frames)
-        y0 = max(2, margin_y)
-        y1 = min(kh - 2, y0 + spatial_px)
-        ax.plot([x0, x1], [y0, y0], color="white", linewidth=2.0, solid_capstyle="butt")
-        ax.plot([x0, x0], [y0, y1], color="white", linewidth=2.0, solid_capstyle="butt")
+        x_corner = kw - margin_x
+        x_left = max(2, x_corner - time_frames)
+        y_corner = margin_y
+        y_top = min(kh - 2, y_corner + spatial_px)
+        ax.plot([x_left, x_corner], [y_corner, y_corner], color="white", linewidth=2.0, solid_capstyle="butt")
+        ax.plot([x_corner, x_corner], [y_corner, y_top], color="white", linewidth=2.0, solid_capstyle="butt")
         time_label = f"{time_frames / fps_hz:.0f} s" if fps_hz > 0 else f"{time_frames} fr"
         spatial_label = _scalebar_label(spatial_px, pixel_size_um)
         ax.text(
-            (x0 + x1) / 2.0,
-            y0 + max(2, kh * 0.06),
+            (x_left + x_corner) / 2.0,
+            y_corner - text_gap,
             time_label,
             color="white",
             ha="center",
-            va="bottom",
-            fontsize=7,
+            va="top",
+            fontsize=REPORT_KYMO_SCALEBAR_FONT_SIZE,
             bbox={"facecolor": (0, 0, 0, 0.35), "edgecolor": "none", "pad": 1.0},
         )
         ax.text(
-            x0 + max(2, kw * 0.02),
-            (y0 + y1) / 2.0,
+            x_corner + vertical_text_gap,
+            (y_corner + y_top) / 2.0,
             spatial_label,
             color="white",
             ha="left",
             va="center",
             rotation=90,
-            fontsize=7,
+            fontsize=REPORT_KYMO_SCALEBAR_FONT_SIZE,
             bbox={"facecolor": (0, 0, 0, 0.35), "edgecolor": "none", "pad": 1.0},
         )
 
@@ -1293,6 +1514,20 @@ def _load_ranked_roi_rows_from_csv(
     if top_n is None:
         return rows
     return rows[: max(0, int(top_n))]
+
+
+def _select_paired_trace_display_rows(roi_rows: Sequence[dict[str, Any]], min_display_count: int = REPORT_TRACE_MIN_DISPLAY_COUNT) -> list[dict[str, Any]]:
+    rows = [dict(row) for row in roi_rows]
+    if len(rows) <= int(min_display_count):
+        return rows
+    return sorted(
+        rows,
+        key=lambda row: (
+            -float(row.get("trace_max", row.get("trace_max_final_selection", 0.0)) or 0.0),
+            -int(row.get("final_area_polished", row.get("pixel_count", 0)) or 0),
+            int(row.get("rank", 0) or 0),
+        ),
+    )[: int(min_display_count)]
 
 
 def _load_rank_masks_from_labelmask(labelmask_path: str | Path, roi_rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1390,6 +1625,95 @@ def _mask_boundary(mask: np.ndarray) -> np.ndarray:
     return mask & ~inner
 
 
+def _fill_mask_center_holes(mask: np.ndarray, allowed_fill_mask: np.ndarray | None = None) -> np.ndarray:
+    mask = np.asarray(mask, dtype=bool)
+    if mask.ndim != 2 or not np.any(mask):
+        return mask
+    ys, xs = np.where(mask)
+    pad = 1
+    y0 = max(0, int(ys.min()) - pad)
+    y1 = min(mask.shape[0], int(ys.max()) + pad + 1)
+    x0 = max(0, int(xs.min()) - pad)
+    x1 = min(mask.shape[1], int(xs.max()) + pad + 1)
+    sub = np.asarray(mask[y0:y1, x0:x1], dtype=bool)
+    inv = ~sub
+    exterior = np.zeros_like(sub, dtype=bool)
+    stack: list[tuple[int, int]] = []
+    if inv.shape[0] > 0 and inv.shape[1] > 0:
+        for x in range(inv.shape[1]):
+            if inv[0, x]:
+                stack.append((0, x))
+            if inv[-1, x]:
+                stack.append((inv.shape[0] - 1, x))
+        for y in range(1, max(1, inv.shape[0] - 1)):
+            if inv[y, 0]:
+                stack.append((y, 0))
+            if inv[y, -1]:
+                stack.append((y, inv.shape[1] - 1))
+    while stack:
+        y, x = stack.pop()
+        if exterior[y, x] or not inv[y, x]:
+            continue
+        exterior[y, x] = True
+        if y > 0:
+            stack.append((y - 1, x))
+        if y + 1 < inv.shape[0]:
+            stack.append((y + 1, x))
+        if x > 0:
+            stack.append((y, x - 1))
+        if x + 1 < inv.shape[1]:
+            stack.append((y, x + 1))
+    holes = inv & ~exterior
+    if allowed_fill_mask is not None:
+        allowed = np.asarray(allowed_fill_mask[y0:y1, x0:x1], dtype=bool)
+        holes &= allowed
+    if not np.any(holes):
+        return mask
+    out = mask.copy()
+    out[y0:y1, x0:x1] |= holes
+    return out
+
+
+def _mask_interior_for_display(mask: np.ndarray, min_area_for_shrink: int = 12) -> np.ndarray:
+    mask = np.asarray(mask, dtype=bool)
+    if int(np.count_nonzero(mask)) < int(min_area_for_shrink):
+        return mask
+    interior = mask & ~_mask_boundary(mask)
+    if int(np.count_nonzero(interior)) <= 0:
+        return mask
+    return interior
+
+
+def _mask_bbox(mask: np.ndarray) -> tuple[int, int, int, int]:
+    ys, xs = np.where(np.asarray(mask, dtype=bool))
+    if ys.size == 0 or xs.size == 0:
+        return 0, 0, 0, 0
+    return int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+
+
+def _external_label_position(mask: np.ndarray, image_shape: Sequence[int], offset_px: int = 10) -> tuple[float, float, float, float]:
+    h, w = int(image_shape[0]), int(image_shape[1])
+    cx, cy = _mask_label_position(mask)
+    x0, y0, x1, y1 = _mask_bbox(mask)
+    frame_cx = (w - 1) / 2.0
+    frame_cy = (h - 1) / 2.0
+    dx = cx - frame_cx
+    dy = cy - frame_cy
+    if abs(dx) >= abs(dy):
+        lx = (x1 + offset_px) if dx >= 0 else (x0 - offset_px)
+        ly = cy
+        ha_anchor = x1 if dx >= 0 else x0
+        va_anchor = cy
+    else:
+        lx = cx
+        ly = (y1 + offset_px) if dy >= 0 else (y0 - offset_px)
+        ha_anchor = cx
+        va_anchor = y1 if dy >= 0 else y0
+    lx = float(np.clip(lx, 3, max(3, w - 4)))
+    ly = float(np.clip(ly, 3, max(3, h - 4)))
+    return float(ha_anchor), float(va_anchor), lx, ly
+
+
 def _report_labels_for_overlay(
     labelmask: np.ndarray,
     roi_summary_csv: str | Path | None,
@@ -1407,13 +1731,15 @@ def _report_labels_for_overlay(
             except Exception:
                 continue
         csv_ranks = sorted(set(csv_ranks))
+    label_set = set(labels)
     source_labels = labels
-    if len(csv_ranks) >= len(labels):
-        source_labels = csv_ranks
+    csv_ranks_in_mask = [rank for rank in csv_ranks if rank in label_set]
+    if len(csv_ranks_in_mask) >= len(labels):
+        source_labels = csv_ranks_in_mask
     total = len(source_labels)
     if total == 0:
         return [], "Report display subset: no analysis ROI available"
-    if total <= int(show_all_below):
+    if total <= int(show_all_below) or float(report_top_percent) >= 0.999:
         return list(source_labels), f"Report display subset: all {total} analysis ROI shown"
     keep = max(int(min_display_count), int(math.ceil(total * float(report_top_percent))))
     keep = min(keep, total)
@@ -1421,6 +1747,20 @@ def _report_labels_for_overlay(
         list(source_labels[:keep]),
         f"Report display subset: top {int(round(report_top_percent * 100))}% of analysis ROI (minimum {int(min_display_count)}; showing {keep}/{total})",
     )
+
+
+def _roi_summary_total_count(roi_summary_csv: str | Path | None, fallback_count: int) -> int:
+    if not roi_summary_csv or not Path(roi_summary_csv).exists():
+        return int(fallback_count)
+    total = 0
+    for row in _load_csv_rows(roi_summary_csv):
+        try:
+            in_analysis = int(float(row.get("in_analysis_set", "1") or 1))
+        except Exception:
+            in_analysis = 1
+        if in_analysis == 1:
+            total += 1
+    return int(total) if total > 0 else int(fallback_count)
 
 
 def save_segmentation_overlay_png(
@@ -1433,9 +1773,12 @@ def save_segmentation_overlay_png(
     pixel_size_um: float | None = None,
     min_display_count: int = REPORT_SEGMENTATION_MIN_DISPLAY_COUNT,
     show_all_below: int = REPORT_SEGMENTATION_SHOW_ALL_BELOW,
+    scalebar_text_gap_px: float | None = None,
 ) -> dict[str, Any]:
     labelmask = np.asarray(tiff.imread(str(Path(labelmask_path).expanduser().resolve())))
     labelmask = np.squeeze(labelmask)
+    label_count = len([int(x) for x in np.unique(labelmask) if int(x) > 0]) if labelmask.ndim == 2 else 0
+    total_mask_count = _roi_summary_total_count(roi_summary_csv, fallback_count=label_count)
     selected_labels, display_note = _report_labels_for_overlay(
         labelmask,
         roi_summary_csv,
@@ -1449,56 +1792,34 @@ def save_segmentation_overlay_png(
             "selected_count": 0,
             "selected_ranks": [],
             "display_note": display_note,
+            "total_mask_count": total_mask_count,
         }
     bg = _normalize_image(background_img)
     rgb = np.repeat(bg[..., None], 3, axis=2)
     cmap = plt.get_cmap("tab20")
     selected_ranks: list[int] = []
-    label_annotations: list[tuple[float, float, np.ndarray, int]] = []
+    fill_allowed = labelmask == 0
     for idx, rank in enumerate(selected_labels):
         mask = labelmask == rank
         if not np.any(mask):
             continue
+        mask = _fill_mask_center_holes(mask, allowed_fill_mask=fill_allowed)
         color = np.asarray(cmap(idx % 20)[:3], dtype=np.float32)
         boundary = _mask_boundary(mask)
         rgb[mask] = 0.84 * rgb[mask] + 0.16 * color
         rgb[boundary] = color
         selected_ranks.append(rank)
-        cx, cy = _mask_label_position(mask)
-        label_annotations.append((cx, cy, color, int(rank)))
     fig, ax = plt.subplots(figsize=(5.0, 4.6), dpi=180)
     ax.imshow(np.clip(rgb, 0.0, 1.0), interpolation="nearest")
-    for cx, cy, color, rank in label_annotations:
-        ax.text(
-            cx,
-            cy,
-            str(rank),
-            color="white",
-            ha="center",
-            va="center",
-            fontsize=7,
-            fontweight="bold",
-            bbox={"facecolor": color, "edgecolor": "white", "linewidth": 0.6, "boxstyle": "round,pad=0.18"},
-        )
     ax.set_axis_off()
     ax.set_title(title, loc="left", pad=4)
-    _add_scalebar(ax, labelmask.shape, pixel_size_um=pixel_size_um)
-    ax.text(
-        0.02,
-        0.02,
-        display_note,
-        transform=ax.transAxes,
-        ha="left",
-        va="bottom",
-        fontsize=8,
-        color="white",
-        bbox={"facecolor": (0, 0, 0, 0.45), "edgecolor": "none", "pad": 1.2},
-    )
+    _add_scalebar(ax, labelmask.shape, pixel_size_um=pixel_size_um, text_gap_px=scalebar_text_gap_px)
     return {
         "png": _save_figure(fig, output_png),
         "selected_count": len(selected_ranks),
         "selected_ranks": selected_ranks,
         "display_note": display_note,
+        "total_mask_count": total_mask_count,
     }
 
 
@@ -1609,23 +1930,74 @@ def _zscore_trace_rows(traces: np.ndarray) -> np.ndarray:
     return out
 
 
+def _smooth_trace_rows_for_sorting(traces: np.ndarray) -> np.ndarray:
+    traces = np.asarray(traces, dtype=np.float32)
+    if traces.ndim != 2 or traces.shape[1] < 3:
+        return traces.astype(np.float32, copy=False)
+    kernel_len = min(21, max(3, int(traces.shape[1] // 80) * 2 + 1))
+    kernel = np.ones((kernel_len,), dtype=np.float32) / float(kernel_len)
+    return np.vstack([np.convolve(row, kernel, mode="same") for row in traces]).astype(np.float32, copy=False)
+
+
+def _rastermap_like_row_order(zscore: np.ndarray, n_time_groups: int = 32) -> np.ndarray:
+    zscore = np.asarray(zscore, dtype=np.float32)
+    if zscore.ndim != 2 or zscore.shape[0] <= 1:
+        return np.arange(zscore.shape[0] if zscore.ndim == 2 else 0, dtype=np.int32)
+    smoothed = _smooth_trace_rows_for_sorting(zscore)
+    positive = np.maximum(smoothed, 0.0)
+    activity = np.sum(positive, axis=1)
+    active = activity > 1e-8
+    peak_bins = np.argmax(smoothed, axis=1).astype(np.int32)
+    if not np.any(active):
+        return np.arange(zscore.shape[0], dtype=np.int32)
+
+    active_idx = np.flatnonzero(active)
+    inactive_idx = np.flatnonzero(~active)
+    time_bins = max(1, int(zscore.shape[1]))
+    group_count = max(1, min(int(n_time_groups), time_bins, int(active_idx.size)))
+    peak_groups = np.floor(peak_bins[active_idx] * group_count / max(time_bins, 1)).astype(np.int32)
+    peak_groups = np.clip(peak_groups, 0, group_count - 1)
+    ordered: list[int] = []
+    for group in range(group_count):
+        group_idx = active_idx[peak_groups == group]
+        if group_idx.size == 0:
+            continue
+        group_idx = group_idx[np.argsort(peak_bins[group_idx], kind="stable")]
+        if group_idx.size >= 3:
+            features = positive[group_idx]
+            norms = np.linalg.norm(features, axis=1, keepdims=True)
+            features = features / np.maximum(norms, 1e-8)
+            centered = features - np.mean(features, axis=0, keepdims=True)
+            try:
+                _, _, vh = np.linalg.svd(centered, full_matrices=False)
+                projection = centered @ vh[0]
+                if np.corrcoef(projection, peak_bins[group_idx].astype(np.float32))[0, 1] < 0:
+                    projection = -projection
+                group_idx = group_idx[np.lexsort((projection, peak_bins[group_idx]))]
+            except np.linalg.LinAlgError:
+                pass
+        ordered.extend(int(i) for i in group_idx)
+    ordered.extend(int(i) for i in inactive_idx)
+    return np.asarray(ordered, dtype=np.int32)
+
+
 def _heatmap_tick_positions(count: int) -> tuple[np.ndarray, list[int]]:
     if count <= 0:
         return np.asarray([], dtype=np.int32), []
-    ticks = np.arange(0, count, dtype=np.int32)
-    return ticks, [int(x) for x in ticks]
+    target = float(count) / 5.0
+    interval = max(10, int(math.floor(target / 10.0 + 0.5) * 10))
+    labels = np.arange(interval, count + 1, interval, dtype=np.int32)
+    positions = labels - 1
+    return positions, [int(x) for x in labels]
+
+
+def _rastermap_like_row_order_from_traces(traces: np.ndarray, target_bin_count: int = 1000) -> np.ndarray:
+    binned, _ = _bin_trace_matrix(traces, target_bin_count=target_bin_count)
+    return _rastermap_like_row_order(_zscore_trace_rows(binned))
 
 
 def _heatmap_tick_fontsize(count: int) -> float:
-    if count <= 20:
-        return 8.0
-    if count <= 40:
-        return 7.0
-    if count <= 80:
-        return 6.0
-    if count <= 140:
-        return 5.0
-    return 4.0
+    return REPORT_AXIS_TICK_FONTSIZE
 
 
 def _mask_label_position(mask: np.ndarray) -> tuple[float, float]:
@@ -1659,22 +2031,10 @@ def _save_paired_trace_plot(raw_traces: np.ndarray, final_traces: np.ndarray, ro
         ax.axhline(0.0, color="#d8d8d8", linewidth=0.7, zorder=0)
         ax.plot(raw_x, raw_norm, color=RAW_COLOR, linewidth=0.95, label=_reader_label("raw"))
         ax.plot(final_x, final_norm, color=FINAL_COLOR, linewidth=0.95, label=DISPLAY_FINAL_NAME)
-        ax.text(
-            -0.07,
-            0.5,
-            str(i + 1),
-            transform=ax.transAxes,
-            ha="center",
-            va="center",
-            fontsize=10,
-            fontweight="bold",
-            color="white",
-            bbox={"facecolor": roi_colors[i], "edgecolor": "none", "boxstyle": "round,pad=0.25"},
-        )
         title_suffix = ""
         if raw_norm.size != final_norm.size:
             title_suffix = f"  len(raw/final)={int(raw_norm.size)}/{int(final_norm.size)}"
-        ax.set_title(f"ROI {i + 1}  rid={int(roi_defs[i]['rid'])}  corr={corr_txt}{title_suffix}", fontsize=9)
+        ax.set_title(f"{i + 1}. rid={int(roi_defs[i]['rid'])}  px={int(roi_defs[i].get('pixel_count', 0))}  corr={corr_txt}{title_suffix}", fontsize=9)
         ax.grid(True, alpha=0.22)
         if i == 0:
             ax.legend(loc="upper right", frameon=False, fontsize=8)
@@ -1696,32 +2056,43 @@ def _save_paired_mask_plot(
         return {"mask_png": save_unavailable_panel(output_png, "Paired ROI map", "No paired ROI available"), "labelmask_tif": str(labelmask_out)}
     h, w = roi_defs[0]["mask"].shape
     labelmask = np.zeros((h, w), dtype=np.uint16)
-    for idx, roi in enumerate(roi_defs, start=1):
-        labelmask[np.asarray(roi["mask"], dtype=bool)] = np.uint16(idx)
+    raw_union = np.zeros((h, w), dtype=bool)
+    for roi in roi_defs:
+        raw_union |= np.asarray(roi["mask"], dtype=bool)
+    display_masks: list[np.ndarray] = []
+    for roi in roi_defs:
+        raw_mask = np.asarray(roi["mask"], dtype=bool)
+        display_masks.append(_fill_mask_center_holes(raw_mask, allowed_fill_mask=(~raw_union | raw_mask)))
+    for idx, mask in enumerate(display_masks, start=1):
+        labelmask[mask & (labelmask == 0)] = np.uint16(idx)
     tiff.imwrite(str(labelmask_out), labelmask, photometric="minisblack", metadata=None)
     bg = np.zeros((h, w), dtype=np.float32) if background_img is None else _normalize_image(background_img)
     rgb = np.repeat(bg[..., None], 3, axis=2)
     roi_colors = plt.get_cmap("tab10")(np.linspace(0.0, 0.95, max(len(roi_defs), 2)))
     fig, ax = plt.subplots(figsize=(5.2, 4.8), dpi=180)
-    for idx, roi in enumerate(roi_defs, start=1):
-        mask = np.asarray(roi["mask"], dtype=bool)
+    label_specs: list[tuple[float, float, float, float, np.ndarray, int]] = []
+    for idx, (roi, mask) in enumerate(zip(roi_defs, display_masks), start=1):
         color = np.asarray(roi_colors[idx - 1][:3], dtype=np.float32)
-        boundary = _mask_boundary(mask)
-        rgb[mask] = 0.82 * rgb[mask] + 0.18 * color
+        display_mask = _mask_interior_for_display(mask)
+        boundary = _mask_boundary(display_mask)
+        rgb[display_mask] = 0.70 * rgb[display_mask] + 0.30 * color
         rgb[boundary] = color
-        cx, cy = _mask_label_position(mask)
+        ax0, ay0, lx, ly = _external_label_position(mask, (h, w), offset_px=max(8, int(round(min(h, w) * 0.035))))
+        label_specs.append((ax0, ay0, lx, ly, color, idx))
+    ax.imshow(np.clip(rgb, 0.0, 1.0), interpolation="nearest")
+    for ax0, ay0, lx, ly, color, idx in label_specs:
+        ax.plot([ax0, lx], [ay0, ly], color=color, linewidth=0.85, alpha=0.9)
         ax.text(
-            cx,
-            cy,
+            lx,
+            ly,
             str(idx),
             color="white",
             ha="center",
             va="center",
-            fontsize=9,
+            fontsize=8,
             fontweight="bold",
-            bbox={"facecolor": color, "edgecolor": "white", "linewidth": 0.7, "boxstyle": "circle,pad=0.28"},
+            bbox={"facecolor": color, "edgecolor": "white", "linewidth": 0.55, "boxstyle": "circle,pad=0.22"},
         )
-    ax.imshow(np.clip(rgb, 0.0, 1.0), interpolation="nearest")
     ax.set_axis_off()
     ax.set_title(f"Paired ROI map ({DISPLAY_FINAL_NAME} anchor)", loc="left", pad=4)
     return {"mask_png": _save_figure(fig, output_png), "labelmask_tif": str(labelmask_out)}
@@ -1732,32 +2103,38 @@ def _save_trace_corr_heatmap_png(
     roi_defs: Sequence[dict[str, Any]],
     output_png: str | Path,
     title: str,
+    row_order: np.ndarray | None = None,
 ) -> str:
     if len(roi_defs) == 0 or np.asarray(corr_matrix).size == 0:
         return save_unavailable_panel(output_png, title, "No ROI correlation heatmap available")
 
     n = len(roi_defs)
-    size = float(np.clip(0.12 * n + 6.0, 6.2, 18.0))
+    corr_display = np.asarray(corr_matrix, dtype=np.float32)
+    if row_order is not None and len(row_order) == n:
+        order = np.asarray(row_order, dtype=np.int32)
+        corr_display = corr_display[np.ix_(order, order)]
+    size = float(np.clip(0.035 * n + 7.0, 7.5, REPORT_CORR_HEATMAP_MAX_SIZE_IN))
     tick_fontsize = _heatmap_tick_fontsize(n)
     fig, ax = plt.subplots(figsize=(size, size), dpi=180)
     cmap = plt.get_cmap("bwr")
     cmap = cmap.copy() if hasattr(cmap, "copy") else cmap
     if hasattr(cmap, "set_bad"):
         cmap.set_bad("#cfcfcf")
-    im = ax.imshow(np.asarray(corr_matrix, dtype=np.float32), cmap=cmap, vmin=-1.0, vmax=1.0, interpolation="nearest", origin="upper")
-    rank_labels = [int(roi["rank"]) for roi in roi_defs]
+    im = ax.imshow(corr_display, cmap=cmap, vmin=-1.0, vmax=1.0, interpolation="nearest", origin="upper")
     ticks, tick_idx = _heatmap_tick_positions(n)
     if len(ticks) > 0:
         ax.set_xticks(ticks)
         ax.set_yticks(ticks)
-        ax.set_xticklabels([str(rank_labels[i]) for i in tick_idx], rotation=90, fontsize=tick_fontsize)
-        ax.set_yticklabels([str(rank_labels[i]) for i in tick_idx], fontsize=tick_fontsize)
-    ax.set_xlabel("Selected ROI (final rank)")
-    ax.set_ylabel("Selected ROI (final rank)")
-    ax.set_title(title, loc="left", pad=4)
+        ax.set_xticklabels([str(i) for i in tick_idx], rotation=90, fontsize=tick_fontsize)
+        ax.set_yticklabels([str(i) for i in tick_idx], fontsize=tick_fontsize)
+    ax.tick_params(axis="both", which="major", labelsize=tick_fontsize)
+    ax.set_xlabel("Sorted cell index", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("Sorted cell index", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    ax.set_title(title, loc="left", pad=4, fontsize=REPORT_PANEL_TITLE_FONTSIZE)
     ax.set_aspect("equal")
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Pearson correlation")
+    cbar.set_label("Pearson correlation", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    cbar.ax.tick_params(labelsize=REPORT_AXIS_TICK_FONTSIZE)
     return _save_figure(fig, output_png)
 
 
@@ -1768,6 +2145,7 @@ def _save_trace_temporal_heatmap_png(
     title: str,
     target_bin_count: int = 1000,
     fps_hz: float | None = None,
+    row_order: np.ndarray | None = None,
 ) -> tuple[str, int]:
     traces = np.asarray(traces, dtype=np.float32)
     if len(roi_defs) == 0 or traces.size == 0:
@@ -1775,6 +2153,10 @@ def _save_trace_temporal_heatmap_png(
 
     binned, bin_count = _bin_trace_matrix(traces, target_bin_count=target_bin_count)
     zscore = _zscore_trace_rows(binned)
+    if row_order is None or len(row_order) != len(roi_defs):
+        row_order = _rastermap_like_row_order(zscore)
+    row_order = np.asarray(row_order, dtype=np.int32)
+    zscore_display = zscore[row_order] + 3.0
     n_roi = max(1, int(len(roi_defs)))
     fig_w = 9.6
     fig_h = 4.8
@@ -1795,26 +2177,27 @@ def _save_trace_temporal_heatmap_png(
             duration_s = float(traces.shape[1]) / fps_value
     # Keep the panel height stable. Matplotlib's equal aspect makes sparse
     # ROI x long-time heatmaps collapse into a thin stripe.
-    im = ax.imshow(zscore, cmap=cmap, vmin=-3.0, vmax=3.0, aspect="auto", interpolation="nearest", origin="upper")
+    im = ax.imshow(zscore_display, cmap=cmap, vmin=0.0, vmax=6.0, aspect="auto", interpolation="nearest", origin="upper")
     ax.set_ylim(n_roi - 0.5, -0.5)
     if duration_s is not None:
         xtick_count = max(2, min(6, bin_count))
         xticks = np.unique(np.round(np.linspace(0, max(bin_count - 1, 0), num=xtick_count)).astype(np.int32))
         ax.set_xticks(xticks)
         sec_per_bin = float(traces.shape[1]) / float(bin_count) / fps_value
-        ax.set_xticklabels([f"{float(t) * sec_per_bin:.1f}" for t in xticks])
-        ax.set_xlabel("Time (s)")
+        ax.set_xticklabels([f"{float(t) * sec_per_bin:.1f}" for t in xticks], fontsize=REPORT_AXIS_TICK_FONTSIZE)
+        ax.set_xlabel("Time (s)", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
     else:
-        ax.set_xlabel(f"Time bin (count={bin_count})")
-    rank_labels = [int(roi["rank"]) for roi in roi_defs]
-    ticks, tick_idx = _heatmap_tick_positions(len(roi_defs))
+        ax.set_xlabel(f"Time bin (count={bin_count})", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    ticks, tick_idx = _heatmap_tick_positions(len(row_order))
     if len(ticks) > 0:
         ax.set_yticks(ticks)
-        ax.set_yticklabels([str(rank_labels[i]) for i in tick_idx], fontsize=tick_fontsize)
-    ax.set_ylabel("Selected ROI (final rank)")
-    ax.set_title(title, loc="left", pad=4)
+        ax.set_yticklabels([str(i) for i in tick_idx], fontsize=tick_fontsize)
+    ax.tick_params(axis="both", which="major", labelsize=tick_fontsize)
+    ax.set_ylabel("Sorted cell index", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    ax.set_title(title, loc="left", pad=4, fontsize=REPORT_PANEL_TITLE_FONTSIZE)
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Per-cell Z-score")
+    cbar.set_label("Per-cell Z-score + 3", fontsize=REPORT_AXIS_LABEL_FONTSIZE)
+    cbar.ax.tick_params(labelsize=REPORT_AXIS_TICK_FONTSIZE)
     return _save_figure(fig, output_png), int(bin_count)
 
 
@@ -1849,6 +2232,8 @@ def _generate_paired_trace_assets(
     curve_src = Path(curve_src_raw) if curve_src_raw else None
     mask_src = Path(mask_src_raw) if mask_src_raw else None
     labelmask_src = Path(labelmask_src_raw) if labelmask_src_raw else None
+    final_analysis_labelmask = seg_dir / "final" / "roi_selection" / "analysis_mask_uint16.tif"
+    final_analysis_roi_csv = seg_dir / "final" / "roi_selection" / "roi_summary.csv"
     curve_dst = assets_dir / "paired_trace_curves.png"
     mask_dst = assets_dir / "paired_trace_numbered_map.png"
     labelmask_dst = assets_dir / "paired_trace_anchor_labelmask_uint16.tif"
@@ -1871,8 +2256,41 @@ def _generate_paired_trace_assets(
         "all_selected_count": int(summary.get("all_selected_count") or 0),
     }
 
+    all_roi_csv = Path(str(artifacts.get("all_selected_roi_table_csv", paired_dir / "all_selected_roi_table.csv")))
+    all_raw_npy = Path(str(artifacts.get("all_selected_raw_trace_npy", paired_dir / "all_selected_raw_traces_final_roi_anchor.npy")))
+    all_final_npy = Path(str(artifacts.get("all_selected_final_trace_npy", paired_dir / "all_selected_final_traces_final_roi_anchor.npy")))
+    if all_roi_csv.exists() and all_raw_npy.exists() and all_final_npy.exists() and final_analysis_labelmask.exists():
+        all_rows = []
+        for row in _load_csv_rows(all_roi_csv):
+            all_rows.append(
+                {
+                    "rank": int(row["rank"]),
+                    "rid": int(row["rid"]),
+                    "pixel_count": int(float(row.get("pixel_count", 0))),
+                    "final_area_polished": int(float(row.get("final_area_polished", row.get("pixel_count", 0)) or 0)),
+                    "trace_max": float(row.get("trace_max_final_selection", row.get("trace_max_final_stack", 0.0)) or 0.0),
+                }
+            )
+        display_rows = _select_paired_trace_display_rows(all_rows)
+        all_raw = np.asarray(np.load(str(all_raw_npy)), dtype=np.float32)
+        all_final = np.asarray(np.load(str(all_final_npy)), dtype=np.float32)
+        all_rank_to_idx = {int(row["rank"]): idx for idx, row in enumerate(all_rows)}
+        selected_pairs = [(row, all_rank_to_idx[int(row["rank"])]) for row in display_rows if int(row["rank"]) in all_rank_to_idx]
+        selected_rows = [row for row, _ in selected_pairs]
+        selected_indices = [idx for _, idx in selected_pairs]
+        roi_defs = _load_rank_masks_from_labelmask(final_analysis_labelmask, selected_rows)
+        if roi_defs and selected_indices:
+            raw_traces = all_raw[selected_indices, :]
+            final_traces = all_final[selected_indices, :]
+            result["curve_png"] = _save_paired_trace_plot(raw_traces, final_traces, roi_defs, curve_dst)
+            mask_artifacts = _save_paired_mask_plot(roi_defs, mask_dst, labelmask_dst, background_img=background_img)
+            result["mask_png"] = mask_artifacts["mask_png"]
+            result["labelmask_tif"] = mask_artifacts["labelmask_tif"]
+            result["displayed_count"] = int(len(roi_defs))
     if (
-        curve_src is not None and curve_src.is_file()
+        result["curve_png"] is None
+        and result["mask_png"] is None
+        and curve_src is not None and curve_src.is_file()
         and mask_src is not None and mask_src.is_file()
         and labelmask_src is not None and labelmask_src.is_file()
         and background_img is None
@@ -1883,7 +2301,7 @@ def _generate_paired_trace_assets(
         result["curve_png"] = str(curve_dst)
         result["mask_png"] = str(mask_dst)
         result["labelmask_tif"] = str(labelmask_dst)
-    else:
+    if result["curve_png"] is None or result["mask_png"] is None:
         roi_csv = Path(str(artifacts.get("roi_table_csv", paired_dir / "paired_trace_roi_table.csv")))
         raw_npy = Path(str(artifacts.get("raw_trace_npy", paired_dir / "raw_traces_final_roi_anchor.npy")))
         final_npy = Path(str(artifacts.get("final_trace_npy", paired_dir / "final_traces_final_roi_anchor.npy")))
@@ -1903,8 +2321,6 @@ def _generate_paired_trace_assets(
         else:
             unavailable.append("paired_trace_visual_assets_missing")
 
-    final_analysis_roi_csv = seg_dir / "final" / "roi_selection" / "roi_summary.csv"
-    final_analysis_labelmask = seg_dir / "final" / "roi_selection" / "analysis_mask_uint16.tif"
     if final_stack_path is not None and final_analysis_labelmask.exists():
         try:
             heatmap_seed_rows = _load_ranked_roi_rows_from_csv(final_analysis_roi_csv, subset="analysis") if final_analysis_roi_csv.exists() else []
@@ -1915,11 +2331,13 @@ def _generate_paired_trace_assets(
                 heatmap_rows,
             )
             if len(heatmap_roi_defs) > 0 and final_heatmap_traces.size > 0:
+                final_heatmap_order = _rastermap_like_row_order_from_traces(final_heatmap_traces)
                 result["final_corr_png"] = _save_trace_corr_heatmap_png(
                     _compute_trace_corr_matrix(final_heatmap_traces),
                     heatmap_roi_defs,
                     final_corr_dst,
                     f"{DISPLAY_FINAL_NAME} cell correlation heatmap",
+                    row_order=final_heatmap_order,
                 )
                 result["final_trace_heatmap_png"], _ = _save_trace_temporal_heatmap_png(
                     final_heatmap_traces,
@@ -1927,6 +2345,7 @@ def _generate_paired_trace_assets(
                     final_temporal_dst,
                     f"{DISPLAY_FINAL_NAME} cell temporal heatmap",
                     fps_hz=fps_hz,
+                    row_order=final_heatmap_order,
                 )
                 result["all_selected_count"] = int(len(heatmap_roi_defs))
         except Exception as exc:
@@ -1937,9 +2356,6 @@ def _generate_paired_trace_assets(
         result[key] is None
         for key in ["raw_corr_png", "final_corr_png", "raw_trace_heatmap_png", "final_trace_heatmap_png"]
     )
-    all_roi_csv = Path(str(artifacts.get("all_selected_roi_table_csv", paired_dir / "all_selected_roi_table.csv")))
-    all_raw_npy = Path(str(artifacts.get("all_selected_raw_trace_npy", paired_dir / "all_selected_raw_traces_final_roi_anchor.npy")))
-    all_final_npy = Path(str(artifacts.get("all_selected_final_trace_npy", paired_dir / "all_selected_final_traces_final_roi_anchor.npy")))
     if need_heatmap_fallback:
         if all_roi_csv.exists() and all_raw_npy.exists() and all_final_npy.exists() and final_labelmask.exists():
             roi_rows = []
@@ -1949,33 +2365,41 @@ def _generate_paired_trace_assets(
             raw_traces_all = np.asarray(np.load(str(all_raw_npy)), dtype=np.float32)
             final_traces_all = np.asarray(np.load(str(all_final_npy)), dtype=np.float32)
             if result["raw_corr_png"] is None:
+                raw_heatmap_order = _rastermap_like_row_order_from_traces(raw_traces_all)
                 result["raw_corr_png"] = _save_trace_corr_heatmap_png(
                     _compute_trace_corr_matrix(raw_traces_all),
                     all_roi_defs,
                     raw_corr_dst,
                     "Raw cell correlation heatmap",
+                    row_order=raw_heatmap_order,
                 )
             if result["final_corr_png"] is None:
+                final_heatmap_order = _rastermap_like_row_order_from_traces(final_traces_all)
                 result["final_corr_png"] = _save_trace_corr_heatmap_png(
                     _compute_trace_corr_matrix(final_traces_all),
                     all_roi_defs,
                     final_corr_dst,
                     f"{DISPLAY_FINAL_NAME} cell correlation heatmap",
+                    row_order=final_heatmap_order,
                 )
             if result["raw_trace_heatmap_png"] is None:
+                raw_heatmap_order = _rastermap_like_row_order_from_traces(raw_traces_all)
                 result["raw_trace_heatmap_png"], _ = _save_trace_temporal_heatmap_png(
                     raw_traces_all,
                     all_roi_defs,
                     raw_temporal_dst,
                     "Raw cell temporal heatmap",
+                    row_order=raw_heatmap_order,
                 )
             if result["final_trace_heatmap_png"] is None:
+                final_heatmap_order = _rastermap_like_row_order_from_traces(final_traces_all)
                 result["final_trace_heatmap_png"], _ = _save_trace_temporal_heatmap_png(
                     final_traces_all,
                     all_roi_defs,
                     final_temporal_dst,
                     f"{DISPLAY_FINAL_NAME} cell temporal heatmap",
                     fps_hz=fps_hz,
+                    row_order=final_heatmap_order,
                 )
             result["all_selected_count"] = max(int(result.get("all_selected_count") or 0), int(len(all_roi_defs)))
         elif need_heatmap_fallback:
@@ -2134,7 +2558,8 @@ def _render_panel_html(panel: dict[str, Any], report_dir: Path, embed_assets: bo
         meta_bits.append(f'<div class="panel-note">{note}</div>')
     if source:
         meta_bits.append(f'<div class="panel-source" title="{source_title}">Source: {source}</div>')
-    return f'<figure class="panel"><div class="panel-label">{label}</div>{img_html}<figcaption><div class="panel-title">{title}</div>{"".join(meta_bits)}</figcaption></figure>'
+    label_html = f'<span class="panel-label">{label}</span>' if label else ""
+    return f'<figure class="panel">{img_html}<figcaption><div class="panel-heading">{label_html}<span class="panel-title">{title}</span></div>{"".join(meta_bits)}</figcaption></figure>'
 
 
 def _render_kv_grid(items: Sequence[dict[str, Any]], extra_class: str = "") -> str:
@@ -2180,8 +2605,9 @@ def _render_report_html(report_data: dict[str, Any], report_dir: Path, print_mod
     style = f"""
     :root {{--raw:{RAW_COLOR};--denoise:{DENOISE_COLOR};--motion:{MOTION_COLOR};--final:{FINAL_COLOR};--border:{BORDER_COLOR};--muted:{TEXT_MUTED};--bg:#ffffff;}}
     * {{ box-sizing: border-box; }}
+    html, body {{ font-family:{REPORT_FONT_CSS}; }}
     body {{ margin:0; padding:0; background:var(--bg); color:#111111; font-family:{REPORT_FONT_CSS}; }}
-    .report, .report * {{ overflow-wrap:anywhere; word-break:break-word; white-space:normal; }}
+    .report, .report * {{ font-family:{REPORT_FONT_CSS}; overflow-wrap:anywhere; word-break:break-word; white-space:normal; }}
     .report {{ width:min(1420px,95vw); margin:0 auto; padding:18px 18px 28px; }}
     .report-header {{ border-bottom:1px solid var(--border); padding-bottom:16px; margin-bottom:20px; }}
     .report-header h1 {{ margin:0 0 6px; font-size:30px; line-height:1.12; font-weight:700; }}
@@ -2209,8 +2635,9 @@ def _render_report_html(report_data: dict[str, Any], report_dir: Path, print_mod
     .panel {{ margin:0; border:1px solid var(--border); padding:7px; position:relative; background:#ffffff; }}
     .panel img,.panel .panel-na {{ width:100%; display:block; background:#f7f7f7; }}
     .panel-na {{ min-height:240px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-family:{REPORT_FONT_CSS}; }}
-    .panel-label {{ position:absolute; top:9px; left:10px; font-family:{REPORT_FONT_CSS}; font-weight:700; font-size:15px; background:rgba(255,255,255,0.95); padding:1px 6px; border:1px solid var(--border); }}
-    .panel-title {{ font-family:{REPORT_FONT_CSS}; font-size:13px; font-weight:700; margin-top:7px; line-height:1.25; }}
+    .panel-heading {{ display:flex; align-items:flex-start; gap:7px; margin-top:7px; font-family:{REPORT_FONT_CSS}; }}
+    .panel-label {{ flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; min-width:28px; min-height:22px; font-weight:700; font-size:15px; line-height:1; background:#ffffff; padding:2px 6px; border:1px solid var(--border); }}
+    .panel-title {{ min-width:0; font-size:13px; font-weight:700; line-height:1.25; }}
     .panel-note,.panel-source {{ font-family:{REPORT_FONT_CSS}; font-size:11px; color:var(--muted); margin-top:3px; line-height:1.35; }}
     .section-caption {{ margin-top:10px; font-size:12.5px; line-height:1.45; color:#1b1b1b; font-family:{REPORT_FONT_CSS}; }}
     details.provenance-block {{ margin-top:10px; border:1px solid var(--border); padding:8px 10px; }}
@@ -2532,11 +2959,18 @@ def build_deterministic_report(
         base["y1"] = int(y0 + height)
         base["name"] = f"Derived line region {len(line_regions)+1}"
         line_regions.append(base)
+    kymograph_structure_map = _combine_kymograph_structure_map(
+        final_std_img,
+        mip_map=final_mip_img,
+        mean_map=np.asarray(final_corr_info.get("temporal_mean_projection"), dtype=np.float32)
+        if final_corr_info.get("temporal_mean_projection") is not None
+        else None,
+    )
     kymograph_lines = []
     for idx, region in enumerate(line_regions[:report_kymograph_line_count], start=1):
-        coords = _select_line_coords(region)
+        coords = _select_motion_adaptive_line_coords(region, kymograph_structure_map, raw_motion_shifts)
         coords["line_index"] = idx
-        coords["selection_rule"] = f"horizontal_midline_of_{region.get('name', f'region_{idx}') }"
+        coords["region_name"] = str(region.get("name", f"region_{idx}"))
         kymograph_lines.append(coords)
 
     if raw_motion_source and Path(raw_motion_source).exists():
@@ -2625,6 +3059,7 @@ def build_deterministic_report(
         row_labels=[_reader_label("raw"), display_name_final],
         pixel_size_um=pixel_size_used,
         imaging_modality=imaging_modality_used,
+        scalebar_text_gap_px=REPORT_CROP_SCALEBAR_TEXT_GAP_PX,
     )
     kymograph_bundle_png = save_kymograph_bundle_png(
         final_std_img,
@@ -2680,15 +3115,6 @@ def build_deterministic_report(
             "value_fmt": "{:.2f}",
             "delta_text": "Frame-to-frame residual jitter",
         },
-        {
-            "label": "Bleaching drop",
-            "raw": comp_final.get("bleaching_before_after", {}).get("raw_relative_drop_percent"),
-            "candidate": comp_final.get("bleaching_before_after", {}).get("final_relative_drop_percent"),
-            "candidate_label": display_name_final,
-            "candidate_color": FINAL_COLOR,
-            "unit": "%",
-            "value_fmt": "{:.2f}",
-        },
     ]
     metric_bar_png = save_metric_comparison_panel(
         metric_bar_specs,
@@ -2709,10 +3135,16 @@ def build_deterministic_report(
 
     raw_analysis_mask = run_root / "segmentation" / "raw" / "roi_selection" / "analysis_mask_uint16.tif"
     final_analysis_mask = run_root / "segmentation" / "final" / "roi_selection" / "analysis_mask_uint16.tif"
+    raw_display_mask = run_root / "segmentation" / "raw" / "roi_selection" / "display_labelmask_uint16.tif"
+    final_display_mask = run_root / "segmentation" / "final" / "roi_selection" / "display_labelmask_uint16.tif"
     raw_roi_csv = run_root / "segmentation" / "raw" / "roi_selection" / "roi_summary.csv"
     final_roi_csv = run_root / "segmentation" / "final" / "roi_selection" / "roi_summary.csv"
-    raw_overlay_info = {"png": None, "selected_count": 0, "selected_ranks": []}
-    final_overlay_info = {"png": None, "selected_count": 0, "selected_ranks": []}
+    raw_report_mask = raw_display_mask if raw_display_mask.exists() else raw_analysis_mask
+    final_report_mask = final_display_mask if final_display_mask.exists() else final_analysis_mask
+    raw_report_top_percent = 1.0 if raw_display_mask.exists() else REPORT_DISPLAY_TOP_PERCENT
+    final_report_top_percent = 1.0 if final_display_mask.exists() else REPORT_DISPLAY_TOP_PERCENT
+    raw_overlay_info = {"png": None, "selected_count": 0, "selected_ranks": [], "total_mask_count": 0}
+    final_overlay_info = {"png": None, "selected_count": 0, "selected_ranks": [], "total_mask_count": 0}
     paired_assets = {
         "summary": None,
         "curve_png": None,
@@ -2728,26 +3160,28 @@ def build_deterministic_report(
     if include_downstream_section:
         raw_overlay_info = save_segmentation_overlay_png(
             raw_std_img,
-            raw_analysis_mask,
+            raw_report_mask,
             raw_roi_csv,
             down_dir / "segmentation_overlay_raw.png",
             "Raw segmentation overview (STD background)",
-            REPORT_DISPLAY_TOP_PERCENT,
+            raw_report_top_percent,
             pixel_size_um=pixel_size_used,
             min_display_count=REPORT_SEGMENTATION_MIN_DISPLAY_COUNT,
             show_all_below=REPORT_SEGMENTATION_SHOW_ALL_BELOW,
-        ) if raw_analysis_mask.exists() else {"png": save_unavailable_panel(down_dir / "segmentation_overlay_raw.png", "Raw segmentation overview", "Analysis mask missing"), "selected_count": 0, "selected_ranks": []}
+            scalebar_text_gap_px=REPORT_SEGMENTATION_SCALEBAR_TEXT_GAP_PX,
+        ) if raw_report_mask.exists() else {"png": save_unavailable_panel(down_dir / "segmentation_overlay_raw.png", "Raw segmentation overview", "Display mask missing"), "selected_count": 0, "selected_ranks": [], "total_mask_count": 0, "display_note": "Display mask missing"}
         final_overlay_info = save_segmentation_overlay_png(
             final_std_img,
-            final_analysis_mask,
+            final_report_mask,
             final_roi_csv,
             down_dir / "segmentation_overlay_NeuroPilot.png",
             f"{display_name_final} segmentation overview (STD background)",
-            REPORT_DISPLAY_TOP_PERCENT,
+            final_report_top_percent,
             pixel_size_um=pixel_size_used,
             min_display_count=REPORT_SEGMENTATION_MIN_DISPLAY_COUNT,
             show_all_below=REPORT_SEGMENTATION_SHOW_ALL_BELOW,
-        ) if final_analysis_mask.exists() else {"png": save_unavailable_panel(down_dir / "segmentation_overlay_NeuroPilot.png", f"{display_name_final} segmentation overview", "Analysis mask missing"), "selected_count": 0, "selected_ranks": []}
+            scalebar_text_gap_px=REPORT_SEGMENTATION_SCALEBAR_TEXT_GAP_PX,
+        ) if final_report_mask.exists() else {"png": save_unavailable_panel(down_dir / "segmentation_overlay_NeuroPilot.png", f"{display_name_final} segmentation overview", "Display mask missing"), "selected_count": 0, "selected_ranks": [], "total_mask_count": 0, "display_note": "Display mask missing"}
         paired_assets = _generate_paired_trace_assets(
             run_root / "segmentation",
             down_dir,
@@ -2777,6 +3211,35 @@ def build_deterministic_report(
         "corr_curve_csv": str(corr_curve_csv),
     }
 
+    def _segmentation_panel_note(info: dict[str, Any]) -> str:
+        displayed = info.get("selected_count", "N/A")
+        total = info.get("total_mask_count", "N/A")
+        return (
+            "Mask display rule: suite2p polished display masks ranked by delta F/F "
+            "(trace_max), with ROI area as the tie-breaker; "
+            "enclosed center holes are filled for display; "
+            f"displayed masks = {displayed}; total segmented cell masks = {total}; background = STD"
+        )
+
+    def _kymograph_panel_note(lines: Sequence[dict[str, Any]]) -> str:
+        if not lines:
+            return "Motion-adaptive line selection unavailable."
+        motion = lines[0]
+        dx = _safe_float(motion.get("motion_dx_p95_px"))
+        dy = _safe_float(motion.get("motion_dy_p95_px"))
+        parts = []
+        for line in lines[:2]:
+            idx = int(line.get("line_index", len(parts) + 1))
+            orientation = str(line.get("orientation") or "unknown")
+            contrast = _safe_float(line.get("line_bright_dark_contrast"))
+            length = line.get("line_segment_length_px", "N/A")
+            parts.append(f"line {idx}: {orientation}, length={length}px, center-dark-edge contrast={_fmt(contrast)}")
+        return (
+            "Lines follow the dominant frame-to-frame motion axis "
+            f"(dx p95={_fmt(dx)} px, dy p95={_fmt(dy)} px); each line is centered on a bright, persistent cell/dendrite "
+            "structure and scored for dark endpoints. " + "; ".join(parts)
+        )
+
     sections = [
         {
             "kicker": "Section A",
@@ -2803,34 +3266,34 @@ def build_deterministic_report(
             "panel_groups": [
                 {"layout": "grid-1", "panels": [panel(f"{_reader_label('raw')} vs {display_name_final} main grid (2x3)", main_comparison_png, source=str(final_stack_path), note="Top row = Raw; bottom row = NeuroPilot; white ROI boxes mark the crop location")]},
                 {"layout": "grid-1", "panels": [panel("Matched ROI crop grid (2x3)", crop_comparison_png, source=str(final_stack_path), note=f"Crop coordinates = ({roi_crop_region['x0']},{roi_crop_region['y0']})-({roi_crop_region['x1']},{roi_crop_region['y1']})")]},
-                {"layout": "grid-1", "panels": [panel("Kymograph group", kymograph_bundle_png, source=str(final_stack_path), note="NeuroPilot STD line map + Raw/NeuroPilot kymographs for line 1 and line 2")]},
+                {"layout": "grid-1", "panels": [panel("Motion-adaptive kymograph comparison", kymograph_bundle_png, source=str(final_stack_path), note=_kymograph_panel_note(kymograph_lines))]},
                 {"layout": "grid-2", "panels": [
-                    panel("Raw vs NeuroPilot quantitative bars", metric_bar_png, source=str(run_root / "iterations" / "iter_1" / "metrics" / "comparison_raw_vs_final.json"), note="Fixed-ROI SNR proxy and bleaching come from before/after metrics; jitter mean and jitter p95 are re-estimated on the displayed stacks"),
+                    panel("Raw vs NeuroPilot quantitative bars", metric_bar_png, source=str(run_root / "iterations" / "iter_1" / "metrics" / "comparison_raw_vs_final.json"), note="Fixed-ROI SNR proxy comes from before/after metrics; jitter mean and jitter p95 are re-estimated on the displayed stacks"),
                     panel("Residual jitter curve", motion_curve_png, source=str(final_shifts_npy or raw_shifts_npy or ""), note="Frame-to-frame residual rigid jitter estimated on the displayed stacks and converted to um using the configured pixel size; stability proxy rather than the internal PyLoReg motion field"),
                 ]},
                 {"layout": "grid-1", "panels": [panel("Correlation curve", corr_panel_png, source=str(corr_curve_csv), note="frame-to-temporal-mean projection correlation")]},
             ],
             "metric_style": "metric-hero",
             "mini_metrics": [],
-            "caption": f"The central comparison uses only Raw vs {display_name_final}, not intermediate denoise-only or registration-only displays. The same representative frame and deterministic crop are reused across all six images; quantitative differences are shown as paired bars, while residual frame-to-frame rigid jitter is plotted in um as a stability proxy and the correlation panel remains only in this integrated section.",
+            "caption": f"The central comparison uses only Raw vs {display_name_final}, not intermediate denoise-only or registration-only displays. The same representative frame and deterministic crop are reused across all six images; kymograph lines follow the dominant motion axis and are centered on bright structures with darker endpoints; quantitative differences are shown as paired bars, while residual frame-to-frame rigid jitter is plotted in um as a stability proxy and the correlation panel remains only in this integrated section.",
         },
         {
             "kicker": "Section C",
             "title": "C. Downstream Improvement",
             "panel_groups": [
                 {"layout": "grid-2", "panels": [
-                    panel("Raw segmentation map", raw_overlay_info["png"], source=str(raw_analysis_mask), note=f"{raw_overlay_info.get('display_note') or ''}; background = STD; labels = ROI rank"),
-                    panel(f"{display_name_final} segmentation map", final_overlay_info["png"], source=str(final_analysis_mask), note=f"{final_overlay_info.get('display_note') or ''}; background = STD; labels = ROI rank"),
+                    panel("Raw segmentation map", raw_overlay_info["png"], source=str(raw_report_mask), note=_segmentation_panel_note(raw_overlay_info)),
+                    panel(f"{display_name_final} segmentation map", final_overlay_info["png"], source=str(final_report_mask), note=_segmentation_panel_note(final_overlay_info)),
                 ]},
                 {"layout": "grid-2", "panels": [
-                    panel("Paired trace numbered map", paired_assets.get("mask_png"), source=str(paired_assets.get("labelmask_tif") or ""), note="Numbering matches trace panel"),
-                    panel("Paired trace curves", paired_assets.get("curve_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="Raw vs NeuroPilot traces on identical ROI anchors"),
+                    panel("Paired trace mask map", paired_assets.get("mask_png"), source=str(paired_assets.get("labelmask_tif") or ""), note="Colored final ROI anchors with enclosed center holes filled for display; numbers are placed beside masks and connected by leader lines"),
+                    panel("Paired trace curves", paired_assets.get("curve_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="Raw vs NeuroPilot traces on identical ROI anchors; numbers match the paired mask map; display cells prioritize delta F/F, then larger ROI area"),
                 ]},
                 {"layout": "grid-1", "panels": [
-                    panel(f"{display_name_final} cell correlation heatmap", paired_assets.get("final_corr_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="All final analysis ROI shown; ROI order = final analysis rank ascending; value = Pearson correlation; colorbar = [-1, 1]"),
+                    panel(f"{display_name_final} cell correlation heatmap", paired_assets.get("final_corr_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="All final analysis ROI shown; cell order matches the temporal heatmap order; axes are 1-based sorted cell indices with adaptive decade ticks; value = Pearson correlation; colorbar = [-1, 1]"),
                 ]},
                 {"layout": "grid-1", "panels": [
-                    panel(f"{display_name_final} cell temporal heatmap", paired_assets.get("final_trace_heatmap_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="All final analysis ROI shown; ROI order = final analysis rank ascending; x-axis labels = time in seconds; colormap = RdBu_r; bin count = min(1000, frames); value = per-cell Z-score after binning; row height adapts to keep a stable panel height"),
+                    panel(f"{display_name_final} cell temporal heatmap", paired_assets.get("final_trace_heatmap_png"), source=str(run_root / 'segmentation' / 'paired_trace' / 'paired_trace_summary.json'), note="All final analysis ROI shown; rows use Rastermap-like ordering by activity peak time and local pattern similarity; cell axis uses 1-based sorted cell indices with adaptive decade ticks; x-axis remains chronological time in seconds; colormap = RdBu_r; value = per-cell Z-score + 3"),
                 ]},
             ],
             "metric_style": "metric-compact",
@@ -2844,7 +3307,7 @@ def build_deterministic_report(
                 _kv("paired trace displayed count", paired_assets.get("displayed_count", "N/A")),
                 _kv("heatmap ROI count", paired_assets.get("all_selected_count", "N/A")),
             ],
-            "caption": f"Downstream visualization shows all analysis ROI when the count is <= {REPORT_SEGMENTATION_SHOW_ALL_BELOW}, otherwise it keeps the top {int(round(REPORT_DISPLAY_TOP_PERCENT * 100))}% with a minimum of {REPORT_SEGMENTATION_MIN_DISPLAY_COUNT} masks. Paired traces use all final analysis ROI when the count is <= {REPORT_TRACE_MIN_DISPLAY_COUNT}, otherwise they show the top {REPORT_TRACE_MIN_DISPLAY_COUNT} by final analysis rank. Correlation and temporal heatmaps continue to show the full final analysis ROI set in rank order, with the temporal axis labeled in seconds and adaptive temporal-heatmap row height for sparse ROI sets.",
+            "caption": f"Downstream visualization shows suite2p display masks for Raw and {display_name_final} separately, so the two maps are not forced to share a presegmentation candidate mask. Display masks are selected by delta F/F with ROI area as the tie-breaker and use the polished selection masks to reduce adjacent-cell adhesion. Paired traces use all final analysis ROI when the count is <= {REPORT_TRACE_MIN_DISPLAY_COUNT}, otherwise they show the top {REPORT_TRACE_MIN_DISPLAY_COUNT} by delta F/F with final ROI area as the tie-breaker. Correlation and temporal heatmaps share the Rastermap-like cell order, while temporal columns remain chronological.",
         },
         {
             "kicker": "Section D",
@@ -2923,7 +3386,6 @@ def build_deterministic_report(
     layout_notes = [
         f"Intensity panels use {_colormap_label(imaging_modality_used)} colormap based on imaging_modality={imaging_modality_used}.",
         f"The main crop uses scale_factor={float(report_crop_scale_factor):.2f} and is reused across Raw/{display_name_final} single-frame, STD and MIP views.",
-        f"Kymograph line count = {report_kymograph_line_count}.",
         f"Intermediate denoise/registration sections removed = {not bool(report_use_intermediate_sections)}.",
         "All HTML assets are embedded via data URI when report_embed_assets=true.",
     ]
@@ -2962,8 +3424,7 @@ def build_deterministic_report(
             "main_grid_rows": [_reader_label("raw"), display_name_final],
             "main_grid_columns": ["single frame", "STD", "MIP"],
             "crop_grid": "2x3",
-            "kymograph_bundle": "STD line map + 2 x (Raw vs NeuroPilot kymograph)",
-    "quantitative_bar_panel": "Raw vs NeuroPilot grouped bar charts for fixed-ROI SNR proxy, jitter mean, jitter p95 and bleaching",
+            "quantitative_bar_panel": "Raw vs NeuroPilot grouped bar charts for fixed-ROI SNR proxy, jitter mean and jitter p95",
             "motion_curve_panel": "Frame-to-frame residual rigid jitter in um",
         },
         "roi_crop_regions": [roi_crop_region],
@@ -3003,13 +3464,14 @@ def build_deterministic_report(
             "section_included": bool(include_downstream_section),
             "omitted_reason": downstream_section_omitted_reason,
             "report_display_top_percent": REPORT_DISPLAY_TOP_PERCENT,
-            "paired_trace_numbering_rule": "paired_trace_roi_table_rank_order_to_labels_1..N",
-            "heatmap_roi_order": "final_analysis_rank_ascending",
+            "paired_trace_display_rule": "delta_F_over_F_primary_final_area_secondary",
+            "heatmap_roi_order": "correlation_and_temporal_heatmaps_share_rastermap_like_peak_time_then_local_similarity_order",
             "heatmap_cell_display": "all_final_analysis_cells",
             "segmentation_background": "std_projection",
             "temporal_bin_target": 1000,
             "temporal_axis_unit": "seconds_using_fps",
             "temporal_heatmap_colormap": "RdBu_r",
+            "temporal_heatmap_value_transform": "per_cell_zscore_plus_3",
             "temporal_heatmap_cell_aspect": "adaptive_row_height_fixed_panel",
         },
         "section_structure": section_structure,
