@@ -3,10 +3,12 @@
 
 import os
 import glob
+import json
 import time
 import random
 import datetime
 import warnings
+from pathlib import Path
 
 import numpy as np
 import yaml
@@ -24,6 +26,42 @@ from skimage import io
 from .network import Network_3D_Unet
 from .data_process import trainset
 warnings.filterwarnings("ignore", category=UserWarning, message=".*is a low contrast image")
+
+
+TIF_MANIFEST_NAME = "tif_manifest.json"
+
+
+def _load_tif_paths_from_manifest(datasets_path):
+    root = Path(str(datasets_path)).expanduser()
+    manifest_path = root if root.is_file() else root / TIF_MANIFEST_NAME
+    if not manifest_path.is_file():
+        return []
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    raw_entries = payload.get("tifs") or payload.get("selected_tifs") or []
+    tif_files = []
+    for entry in raw_entries:
+        raw_path = entry.get("path") if isinstance(entry, dict) else entry
+        if not raw_path:
+            continue
+        candidate = Path(str(raw_path)).expanduser()
+        if candidate.is_file() and candidate.suffix.lower() in (".tif", ".tiff"):
+            tif_files.append(str(candidate))
+    return sorted(tif_files, key=lambda p: os.path.basename(p).lower())
+
+
+def _resolve_training_tif_files(datasets_path):
+    manifest_tifs = _load_tif_paths_from_manifest(datasets_path)
+    if manifest_tifs:
+        return manifest_tifs
+    return sorted(
+        glob.glob(os.path.join(datasets_path, '*.tif'))
+        + glob.glob(os.path.join(datasets_path, '*.tiff')),
+        key=lambda p: os.path.basename(p).lower(),
+    )
 
 
 def _select_ddp_backend() -> str:
@@ -521,8 +559,7 @@ class training_class:
     def _scan_stacks_and_cache_meta(self):
         patch_t2 = self.patch_t
 
-        tif_files = glob.glob(os.path.join(self.datasets_path, '*.tif')) + \
-                    glob.glob(os.path.join(self.datasets_path, '*.tiff'))
+        tif_files = _resolve_training_tif_files(self.datasets_path)
 
         if _is_main_process() and (not self._preprocess_logged):
             print(f"\033[1;31m🚨🚨🚨 PATH: {self.datasets_path} 🚨🚨🚨\033[0m")

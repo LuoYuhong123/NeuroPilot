@@ -715,14 +715,39 @@ def resolve_advisor_backend(pipeline_mode: str, configured_backend: str) -> str:
     return backend
 
 
+TIF_MANIFEST_NAME = "tif_manifest.json"
+
+
+def _manifest_tif_paths(folder: str | Path) -> list[Path]:
+    root = Path(folder).expanduser()
+    manifest_path = root if root.is_file() else root / TIF_MANIFEST_NAME
+    if not manifest_path.is_file():
+        return []
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    raw_entries = payload.get("tifs") or payload.get("selected_tifs") or []
+    paths: list[Path] = []
+    for entry in raw_entries:
+        raw_path = entry.get("path") if isinstance(entry, dict) else entry
+        if not raw_path:
+            continue
+        candidate = Path(str(raw_path)).expanduser()
+        if candidate.is_file() and candidate.suffix.lower() in (".tif", ".tiff"):
+            paths.append(candidate)
+    return sorted(paths, key=lambda p: p.name.lower())
+
+
 def list_tif_paths(folder: str | Path) -> list[Path]:
     root = Path(folder).expanduser()
     if not root.exists() or not root.is_dir():
         raise FileNotFoundError(f"Input folder not found: {root}")
-    return sorted(
+    direct_tifs = sorted(
         [p for p in root.iterdir() if p.is_file() and p.suffix.lower() in (".tif", ".tiff")],
         key=lambda p: p.name.lower(),
     )
+    return direct_tifs or _manifest_tif_paths(root)
 
 
 def get_single_tif_path_strict(folder: str | Path) -> Path:
@@ -799,6 +824,33 @@ def materialize_tif_subset(src_paths: list[Path], target_dir: str | Path) -> Pat
     for src in src_paths:
         link_or_copy_tif(src, target_dir / src.name)
     return target_dir
+
+
+def write_tif_reference_manifest(src_paths: list[Path], target_dir: str | Path) -> Path:
+    target_dir = Path(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # This directory is a generated DeepCAD training subset cache. Remove stale
+    # materialized TIFF entries so future runs do not keep large duplicate files.
+    for stale_tif in target_dir.iterdir():
+        if stale_tif.is_file() and stale_tif.suffix.lower() in (".tif", ".tiff"):
+            stale_tif.unlink()
+
+    manifest_path = target_dir / TIF_MANIFEST_NAME
+    entries = []
+    for src in src_paths:
+        src_path = Path(src).expanduser().resolve()
+        entries.append(tif_identity(src_path))
+    write_json(
+        manifest_path,
+        {
+            "schema_version": "neuropilot.tif_manifest.v1",
+            "storage": "reference_paths",
+            "note": "Training inputs are referenced by absolute path instead of copied into this folder.",
+            "tifs": entries,
+        },
+    )
+    return manifest_path
 
 
 def get_first_tif_shape(datasets_path: str | Path):
@@ -1201,7 +1253,7 @@ def run_one_folder(folder_name: str) -> None:
         ]
         subset_hash = tif_selection_fingerprint(selected_stage_tifs)
         train_subset_dir = shared_root / "train_inputs" / f"iter_{iiii}_{subset_hash}"
-        materialize_tif_subset(selected_stage_tifs, train_subset_dir)
+        train_subset_manifest_path = write_tif_reference_manifest(selected_stage_tifs, train_subset_dir)
         training_selection = [tif_identity(path) for path in selected_stage_tifs]
 
         default_params = sanitize_train_params(get_default_iter_params(iiii), train_subset_dir)
@@ -1257,6 +1309,7 @@ def run_one_folder(folder_name: str) -> None:
                     "effective_params": current_params,
                     "param_source": param_source,
                     "shared_train_subset_dir": str(train_subset_dir),
+                    "shared_train_manifest": str(train_subset_manifest_path),
                     "shared_train_model": str(test_pth_path / test_deepcad_model),
                 }
             )
@@ -1295,6 +1348,7 @@ def run_one_folder(folder_name: str) -> None:
                 "scale_factor": int(SCALE_FACTOR),
                 "test_datasize": int(TEST_DATASIZE),
                 "shared_train_subset_dir": str(train_subset_dir),
+                "shared_train_manifest": str(train_subset_manifest_path),
                 "raw_tif_name": state["raw_tif_name"],
             }
 
@@ -1450,6 +1504,7 @@ def run_one_folder(folder_name: str) -> None:
             "shared_training": {
                 "enabled": True,
                 "train_subset_dir": str(train_subset_dir),
+                "train_subset_manifest": str(train_subset_manifest_path),
                 "selected_tifs": training_selection,
                 "reference_stack_for_llm": control_state["raw_tif_name"],
             },
@@ -1615,6 +1670,7 @@ def run_one_folder(folder_name: str) -> None:
                     "param_source": param_source,
                     "train_runtime_summary": train_runtime_summary,
                     "shared_train_subset_dir": str(train_subset_dir),
+                    "shared_train_manifest": str(train_subset_manifest_path),
                     "shared_train_model": str(test_pth_path / test_deepcad_model),
                     "llm_target_default_params": advisor_target["default_params"],
                     "current_stage": iter_context["current_stage_name"],

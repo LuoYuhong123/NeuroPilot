@@ -28,6 +28,26 @@ TIFF_SUFFIXES = {".tif", ".tiff"}
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 
 
+def server_context(host_header: str | None = None) -> dict[str, Any]:
+    return {
+        "access_scope": "server_filesystem",
+        "host_header": host_header or "",
+        "server_root": str(ROOT_DIR),
+        "server_cwd": str(Path.cwd().resolve()),
+        "path_note": (
+            "Input/output paths are resolved on the machine running neuropilot_local_ui.py. "
+            "When this UI is exposed as a web page, browser-local paths are not available to the server."
+        ),
+    }
+
+
+def server_path_note() -> str:
+    return (
+        "This path was checked on the UI server, not on the browser user's computer. "
+        "For web deployment, first copy/upload/mount TIFF data on the server, then enter that server-side path."
+    )
+
+
 def utc_now_iso() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
@@ -93,6 +113,10 @@ def inspect_input_layout(input_dir: Path) -> dict[str, Any]:
     prepare_command = f'python prepare_input_tiffs.py --input-dir "{input_dir}"'
     result: dict[str, Any] = {
         "input_dir": str(input_dir),
+        "server_resolved_input_dir": str(input_dir),
+        "server_root": str(ROOT_DIR),
+        "server_cwd": str(Path.cwd().resolve()),
+        "path_access_scope": "server_filesystem",
         "exists": input_dir.exists(),
         "is_dir": input_dir.is_dir(),
         "loose_tifs": [],
@@ -110,9 +134,11 @@ def inspect_input_layout(input_dir: Path) -> dict[str, Any]:
     }
     if not input_dir.exists():
         result["messages"].append("Input directory does not exist.")
+        result["messages"].append(server_path_note())
         return result
     if not input_dir.is_dir():
         result["messages"].append("Input path is not a directory.")
+        result["messages"].append(server_path_note())
         return result
 
     loose_tifs = list_tiffs(input_dir)
@@ -167,6 +193,7 @@ def inspect_input_layout(input_dir: Path) -> dict[str, Any]:
 
     if result["total_tif_count"] == 0:
         result["messages"].append("No tif/tiff files were found under input-dir.")
+        result["messages"].append(server_path_note())
 
     result["can_run"] = (not unprepared_loose_tifs) and bool(result["valid_subfolders"])
     if result["can_run"]:
@@ -726,6 +753,9 @@ class NeuroPilotUIHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/job":
             self._send_json(HTTPStatus.OK, JOB_MANAGER.snapshot())
+            return
+        if parsed.path == "/api/server-info":
+            self._send_json(HTTPStatus.OK, server_context(self.headers.get("Host", "")))
             return
         if parsed.path == "/api/reports":
             query = parse_qs(parsed.query)

@@ -40,6 +40,7 @@ const elements = {
   reportFrame: document.getElementById("report-frame"),
   viewerPath: document.getElementById("viewer-path"),
   openReportLink: document.getElementById("open-report-link"),
+  deploymentNote: document.getElementById("deployment-note"),
 };
 
 function setFlash(message, tone = "neutral") {
@@ -67,6 +68,38 @@ async function getJson(url) {
     throw new Error(data.error || "Request failed.");
   }
   return data;
+}
+
+function isLocalBrowserHost() {
+  const host = (window.location.hostname || "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "";
+}
+
+async function renderDeploymentContext() {
+  if (!elements.deploymentNote) {
+    return;
+  }
+  try {
+    const info = await getJson("/api/server-info");
+    const localAccess = isLocalBrowserHost();
+    elements.deploymentNote.classList.toggle("hidden", localAccess);
+    if (!localAccess) {
+      elements.deploymentNote.innerHTML = `
+        <strong>Web deployment path rule</strong>
+        <span>
+          Input and output paths are resolved on the NeuroPilot UI server, not on this browser's computer.
+          Local paths such as <code>D:\\data\\study</code> only work if that exact path exists on the server.
+          Copy, upload, or mount your TIFF data on the server first, then enter the server-side path.
+        </span>
+        <small>Server root: ${info.server_root || "unknown"}</small>
+      `;
+      elements.inputDir.placeholder = "Server path, e.g. /data/neuropilot/input";
+      elements.outputDir.placeholder = "Server path, e.g. /data/neuropilot/runs/study_001";
+    }
+  } catch (error) {
+    elements.deploymentNote.classList.remove("hidden");
+    elements.deploymentNote.textContent = `Could not read server deployment context: ${error.message}`;
+  }
 }
 
 function toggleConditionalFields() {
@@ -166,6 +199,8 @@ function renderScanSummary(scan) {
     </div>
     <div class="summary-list">
       <p><strong>Input directory</strong><span>${scan.input_dir}</span></p>
+      <p><strong>Server-resolved path</strong><span>${scan.server_resolved_input_dir || scan.input_dir}</span></p>
+      <p><strong>Server root</strong><span>${scan.server_root || "Unknown"}</span></p>
       <p><strong>Valid names</strong><span>${scan.valid_subfolders.length ? scan.valid_subfolders.join(", ") : "None"}</span></p>
       <p><strong>Invalid names</strong><span>${scan.invalid_subfolders.length ? scan.invalid_subfolders.join(", ") : "None"}</span></p>
       <p><strong>Loose TIFF files</strong><span>${scan.loose_tifs.length ? scan.loose_tifs.join(", ") : "None"}</span></p>
@@ -238,7 +273,7 @@ async function scanInputDir() {
         setFlash("Input structure check passed. The selected directory is ready for launch.", "success");
       }
     } else if ((data.total_tif_count || 0) === 0) {
-      setFlash("No TIFF files were found under the selected input directory. Preparation is not available for an empty input.", "danger");
+      setFlash(`No TIFF files were found on the UI server at ${data.server_resolved_input_dir || data.input_dir}. If the files are on your browser computer, copy/upload/mount them to the server first; preparation is not available for an empty server path.`, "danger");
     } else if (data.should_prepare_input) {
       setFlash("Flat TIFF files were detected at the input root. Use the prepare button shown below before launching the pipeline.", "warning");
     } else {
@@ -441,5 +476,6 @@ elements.selectAllButton.addEventListener("click", () => selectAllValidSubfolder
 elements.clearAllButton.addEventListener("click", () => selectAllValidSubfolders(false));
 
 toggleConditionalFields();
+renderDeploymentContext();
 refreshJobSnapshot();
 setInterval(refreshJobSnapshot, pollIntervalMs);

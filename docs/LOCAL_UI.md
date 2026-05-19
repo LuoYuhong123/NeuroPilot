@@ -32,6 +32,14 @@ Optional flags:
 
 Because the UI uses only Python standard-library modules, it does not add a separate web-framework dependency. The actual NeuroPilot run is still launched from the selected conda environment.
 
+## Deployment Path Rule
+
+The UI scans paths on the machine running `neuropilot_local_ui.py`.
+
+If the UI is exposed through a web URL, paths typed in the browser are still server-side paths. A user laptop path such as `D:\data\study` is not visible to the server unless the server is the same machine or that path is mounted there.
+
+For web deployment, copy, upload, or mount TIFF data on the server first, then enter the server path in `input-dir` and `output-dir`.
+
 ## Parameters Exposed In The UI
 
 - `input-dir`

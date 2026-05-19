@@ -232,6 +232,34 @@ button {
   line-height: 1.6;
 }
 
+.deployment-note {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(242, 201, 130, 0.09);
+  border: 1px solid rgba(242, 201, 130, 0.2);
+  color: #f1dfbb;
+  line-height: 1.6;
+}
+
+.deployment-note strong {
+  color: #ffe2a3;
+}
+
+.deployment-note span,
+.deployment-note small {
+  color: #e8dcc1;
+}
+
+.deployment-note code {
+  padding: 2px 5px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff2d0;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

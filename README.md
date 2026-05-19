@@ -143,12 +143,48 @@ NeuroPilot writes outputs under:
 <output-dir>/<dataset-subfolder>/
 ```
 
-Typical per-stack artifacts include:
+For example, a run that processes `sample_a/sample_a_01.tif` writes a tree like:
 
-- `final/final_stack.tif`
-- `manifests/pipeline_manifest.json`
-- `report/report.html`
-- `segmentation/` for cell-data downstream outputs
+```text
+<output-dir>/
+  sample_a/
+    _shared/
+      train_inputs/
+        iter_0_<hash>/
+          tif_manifest.json          # referenced training TIFF paths; TIFFs are not copied here
+      pth_deepcad/
+        <shared_model_folder>/       # DeepCAD model reused by stacks in this dataset folder
+      iterations/
+        iter_0/
+          llm/                       # shared advisor request/response records
+    logs/
+      ERROR_<dataset>_<timestamp>.log # present only when a dataset-level error occurs
+    sample_a_01_<hash>/
+      raw_input/                     # one-stack input used by this stack run
+      results_deepcad/               # per-iteration denoised stacks
+      results_demotion/              # motion-corrected outputs
+      metrics/
+        input/                       # raw-input quality metrics
+      iterations/
+        iter_0/
+          metrics/                   # iteration metrics and skip checks
+          llm/                       # copy of the shared advisor records for this stack
+      final/
+        final_stack.tif              # final restored stack
+      segmentation/                  # cell-data downstream outputs, when enabled
+      manifests/
+        pipeline_manifest.json       # run manifest with paths and parameters
+      report/
+        report.html                  # main browser report to open
+```
+
+The most useful files for review are:
+
+- `report/report.html`: main visual report for a stack
+- `final/final_stack.tif`: final restored TIFF stack
+- `manifests/pipeline_manifest.json`: exact inputs, parameters, and artifact paths
+- `segmentation/`: downstream segmentation artifacts when `--cell-data` is enabled
+- `_shared/train_inputs/*/tif_manifest.json`: the training subset record; it stores source TIFF paths instead of duplicate TIFF data
 
 The UI discovers `report.html` recursively under the chosen output directory.
 

@@ -22,6 +22,8 @@ logs/
 # Large demo movies are distributed as GitHub Release assets, not tracked in git.
 demo_data/raw_CA1/raw_CA1.tif
 demo_data/raw_LEC/raw_LEC.tif
+demo_data/24h/
+demo_data/spine/
 demo_data/spine_data_demo/
 
 # Models and heavy artifacts
