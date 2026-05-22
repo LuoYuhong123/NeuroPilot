@@ -1,0 +1,23 @@
+{
+  "schema_version": "neuropilot_rag.literature_validation.v1",
+  "generated_at_utc": "2026-05-21T03:40:57+00:00",
+  "manifest": {
+    "record_count": 25,
+    "pdf_record_count": 20,
+    "core_neuropilot_record_count": 2,
+    "invalid_pdf_record_ids": [],
+    "has_neuropilot_main": true,
+    "has_neuropilot_supplement": true
+  },
+  "chunks": {
+    "document_count": 25,
+    "chunk_count": 607,
+    "extracted_document_count": 20,
+    "extract_failed_ids": [],
+    "downloaded_pdf_without_chunks": [],
+    "core_neuropilot_chunks_by_document": {
+      "neuropilot_main_20260420": 46,
+      "neuropilot_supplementary_materials_20260419": 27
+    }
+  }
+}

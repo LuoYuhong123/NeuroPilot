@@ -9,6 +9,8 @@ import csv
 import html
 import json
 import math
+import os
+import re
 import shutil
 import string
 import subprocess
@@ -27,6 +29,17 @@ from matplotlib.patches import Rectangle
 import numpy as np
 import tifffile as tiff
 from input_metrics import estimate_raw_motion_rigid, load_tif_anyshape
+
+try:
+    from rag.experiment_index import (
+        build_advisor_retrieval_bundle,
+        build_context_from_run_root,
+        parse_runs_roots,
+    )
+except Exception:
+    build_advisor_retrieval_bundle = None
+    build_context_from_run_root = None
+    parse_runs_roots = None
 
 RAW_COLOR = "#2f2f2f"
 DENOISE_COLOR = "#d57d2a"
@@ -2490,6 +2503,251 @@ def _kv(label: str, value: Any) -> dict[str, Any]:
     return {"label": label, "value": value}
 
 
+def _env_int_report(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return int(default)
+    try:
+        return int(raw)
+    except ValueError:
+        return int(default)
+
+
+def _env_bool_report(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def _latest_existing_retrieval_bundle(run_root: Path) -> dict[str, Any] | None:
+    candidates = sorted((run_root / "iterations").glob("iter_*/llm/retrieval_bundle.json"))
+    shared_candidates = sorted(run_root.parent.glob("_shared/iterations/iter_*/llm/retrieval_bundle.json"))
+    for path in reversed(candidates + shared_candidates):
+        data = _read_json(path)
+        if isinstance(data, dict) and data.get("schema_version"):
+            return data
+    return None
+
+
+def _build_report_retrieval_bundle(run_root: Path) -> dict[str, Any] | None:
+    if not _env_bool_report("NEUROPILOT_RAG_ENABLED", True):
+        return None
+    if build_advisor_retrieval_bundle is None or build_context_from_run_root is None or parse_runs_roots is None:
+        return None
+    try:
+        top_k = max(0, _env_int_report("NEUROPILOT_RAG_TOP_K", 5))
+        if top_k <= 0:
+            return None
+        if _env_bool_report("NEUROPILOT_RAG_REPORT_USE_EXISTING", True):
+            existing = _latest_existing_retrieval_bundle(run_root)
+            if existing:
+                return existing
+        context = build_context_from_run_root(run_root)
+        roots = parse_runs_roots(os.getenv("NEUROPILOT_RAG_RUNS_ROOTS"), current_run_root=run_root)
+        return build_advisor_retrieval_bundle(
+            context,
+            runs_roots=roots,
+            current_run_root=run_root,
+            top_k=top_k,
+            index_output_path=run_root / "report" / "advisor_experiment_index.json",
+        )
+    except Exception as exc:
+        return {
+            "schema_version": "neuropilot_rag.retrieval_error.v1",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "matched_experiments": [],
+        }
+
+
+def _short_run_label(match: dict[str, Any]) -> str:
+    folder = str(match.get("folder_name") or "unknown-folder")
+    stack = str(match.get("stack_name") or "unknown-stack")
+    rank = match.get("rank")
+    return f"#{rank} {folder} / {stack}" if rank is not None else f"{folder} / {stack}"
+
+
+def _extract_iter_index_from_path(path: Path) -> int:
+    try:
+        return int(path.parent.parent.name.replace("iter_", ""))
+    except Exception:
+        return -1
+
+
+def _format_train_params(params: dict[str, Any] | None) -> str:
+    if not isinstance(params, dict):
+        return "N/A"
+    return (
+        f"{params.get('sample_mode', 'N/A')}/e{params.get('n_epochs', 'N/A')} "
+        f"x{params.get('patch_x', 'N/A')} y{params.get('patch_y', 'N/A')} "
+        f"t{params.get('patch_t', 'N/A')} b{params.get('batch_size', 'N/A')}"
+    )
+
+
+def _advisor_decision_metrics(run_root: Path) -> list[dict[str, Any]]:
+    decision_rows: list[dict[str, Any]] = []
+    iter_root = run_root / "iterations"
+    if not iter_root.exists():
+        return decision_rows
+    manifest = _read_json(run_root / "manifests" / "pipeline_manifest.json") or {}
+    manifest_iterations = {}
+    for item in manifest.get("iterations", []) if isinstance(manifest.get("iterations"), list) else []:
+        if isinstance(item, dict):
+            try:
+                manifest_iterations[int(item.get("iter_index"))] = item
+            except Exception:
+                pass
+    suggestion_paths = sorted(
+        iter_root.glob("iter_*/llm/suggestion_validated.json"),
+        key=_extract_iter_index_from_path,
+    )
+    for suggestion_path in suggestion_paths:
+        iter_index = _extract_iter_index_from_path(suggestion_path)
+        suggestion = _read_json(suggestion_path) or {}
+        request = _read_json(suggestion_path.parent / "request.json") or {}
+        context = request.get("context", {}) if isinstance(request.get("context"), dict) else {}
+        target = context.get("suggestion_target", {}) if isinstance(context.get("suggestion_target"), dict) else {}
+        default_params = target.get("default_params", {}) if isinstance(target.get("default_params"), dict) else {}
+        manifest_iter = manifest_iterations.get(iter_index, {})
+        if not default_params and isinstance(manifest_iter, dict):
+            default_params = (
+                manifest_iter.get("llm_target_default_params", {})
+                if isinstance(manifest_iter.get("llm_target_default_params"), dict)
+                else {}
+            )
+        retrieval = _read_json(suggestion_path.parent / "retrieval_bundle.json") or {}
+        applied_diff = _read_json(suggestion_path.parent / "applied_diff.json") or {}
+        control = _read_json(suggestion_path.parent / "iteration_control_record.json") or {}
+        if not control and isinstance(manifest_iter, dict):
+            control = (
+                manifest_iter.get("iteration_control_decision", {})
+                if isinstance(manifest_iter.get("iteration_control_decision"), dict)
+                else {}
+            )
+        retrieval_text = "RAG off"
+        if retrieval:
+            retrieval_text = (
+                f"records={len(retrieval.get('matched_experiments', []) or [])}, "
+                f"literature={len(retrieval.get('literature', []) or [])}"
+            )
+        suggestion_params = {
+            "sample_mode": default_params.get("sample_mode"),
+            "n_epochs": suggestion.get("n_epochs"),
+            "patch_x": suggestion.get("patch_x"),
+            "patch_y": suggestion.get("patch_y"),
+            "patch_t": suggestion.get("patch_t"),
+            "batch_size": suggestion.get("batch_size"),
+        }
+        changes = applied_diff.get("changes", {}) if isinstance(applied_diff.get("changes"), dict) else {}
+        change_text = ", ".join(
+            f"{name}:{delta.get('from')}->{delta.get('to')}"
+            for name, delta in changes.items()
+            if isinstance(delta, dict)
+        ) or str(applied_diff.get("not_applied_reason") or "none")
+        guardrails = control.get("guardrail_reasons", []) if isinstance(control.get("guardrail_reasons"), list) else []
+        value = (
+            f"initial/default={_format_train_params(default_params)}; "
+            f"advisor/RAG={_format_train_params(suggestion_params)}; "
+            f"applied={change_text}; "
+            f"continue={suggestion.get('continue_iteration')}; "
+            f"control_continue={control.get('continue_next_iteration', 'N/A')}; "
+            f"fallback={((suggestion.get('meta') or {}).get('used_fallback') if isinstance(suggestion.get('meta'), dict) else 'N/A')}; "
+            f"{retrieval_text}; "
+            f"guardrails={' | '.join(str(item) for item in guardrails) or 'none'}"
+        )
+        decision_rows.append(
+            {
+                "label": f"iter {iter_index} initial vs advisor/RAG",
+                "value": value,
+                "max_chars": 260,
+            }
+        )
+    return decision_rows
+
+
+def _advisor_evidence_section(retrieval_bundle: dict[str, Any] | None, run_root: Path | None = None) -> dict[str, Any] | None:
+    if not retrieval_bundle:
+        return None
+    matches = retrieval_bundle.get("matched_experiments", [])
+    if not isinstance(matches, list):
+        matches = []
+    literature = retrieval_bundle.get("literature", [])
+    if not isinstance(literature, list):
+        literature = []
+    literature_state = (
+        retrieval_bundle.get("literature_retrieval", {})
+        if isinstance(retrieval_bundle.get("literature_retrieval"), dict)
+        else {}
+    )
+    mini_metrics = [
+        _kv("retrieval mode", retrieval_bundle.get("retrieval_mode", "local_experiment_history")),
+        _kv("candidate records scanned", retrieval_bundle.get("candidate_count", 0)),
+        _kv("current run excluded", retrieval_bundle.get("excluded_current_run_count", 0)),
+        _kv("matched records shown", len(matches)),
+        _kv("literature status", literature_state.get("status", "not_available")),
+        _kv("literature candidate chunks", literature_state.get("candidate_count", 0)),
+        _kv("literature chunks shown", len(literature)),
+    ]
+    if run_root is not None:
+        mini_metrics.extend(_advisor_decision_metrics(run_root))
+    for match in matches[:5]:
+        if not isinstance(match, dict):
+            continue
+        final_outcome = match.get("final_outcome", {}) if isinstance(match.get("final_outcome"), dict) else {}
+        raw_metrics = match.get("raw_metrics", {}) if isinstance(match.get("raw_metrics"), dict) else {}
+        reasons = match.get("matched_reasons", []) if isinstance(match.get("matched_reasons"), list) else []
+        quality = match.get("record_quality", {}) if isinstance(match.get("record_quality"), dict) else {}
+        value = (
+            f"score={_fmt(match.get('score'))}; "
+            f"quality={quality.get('level', 'unknown')}:{_fmt(quality.get('confidence'))}; "
+            f"profile={match.get('dataset_profile')}; "
+            f"shape={raw_metrics.get('shape_thw')}; "
+            f"raw_snr={_fmt(raw_metrics.get('snr'))}; "
+            f"delta_snr={_fmt(final_outcome.get('delta_snr'))}; "
+            f"reason={' | '.join(str(item) for item in reasons[:3])}; "
+            f"run_root={match.get('run_root')}"
+        )
+        mini_metrics.append({"label": _short_run_label(match), "value": value, "max_chars": 220})
+    for idx, item in enumerate(literature[:5], start=1):
+        if not isinstance(item, dict):
+            continue
+        terms = item.get("matched_terms", []) if isinstance(item.get("matched_terms"), list) else []
+        value = (
+            f"score={_fmt(item.get('score'))}; "
+            f"citation={item.get('citation')}; "
+            f"terms={', '.join(str(term) for term in terms[:8])}; "
+            f"snippet={_truncate_middle(item.get('snippet'), max_chars=220)}"
+        )
+        mini_metrics.append({"label": f"#L{idx} {item.get('paper_id', 'unknown-paper')}", "value": value, "max_chars": 220})
+    if matches or literature:
+        record_list = "; ".join(_short_run_label(match) for match in matches if isinstance(match, dict))
+        literature_list = "; ".join(
+            str(item.get("citation") or item.get("paper_id"))
+            for item in literature
+            if isinstance(item, dict)
+        )
+        caption = (
+            "Advisor evidence lists the historical experiment records, literature chunks, and per-iteration "
+            "initial/default versus advisor/RAG recommendations used by the local RAG layer. "
+            f"Retrieved records: {record_list or 'none'}. Retrieved literature: {literature_list or 'none'}."
+        )
+    else:
+        caption = (
+            "Advisor evidence was requested, but no prior experiment or literature chunk matched the current run."
+        )
+    if retrieval_bundle.get("error"):
+        caption = f"Advisor evidence retrieval failed: {retrieval_bundle.get('error_type')}: {retrieval_bundle.get('error')}"
+    return {
+        "key": "advisor_evidence",
+        "title_body": "Advisor Evidence And Recommendations",
+        "panel_groups": [],
+        "metric_style": "metric-compact",
+        "mini_metrics": mini_metrics,
+        "caption": caption,
+    }
+
+
 def _px_to_um(value_px: Any, pixel_size_um: float | None) -> float | None:
     value = _safe_float(value_px)
     scale = _safe_float(pixel_size_um)
@@ -2507,7 +2765,22 @@ def _load_stage_metrics_from_comparison(comparison: dict[str, Any] | None) -> tu
     return _read_json(metrics_json), metrics_json
 
 
+def _iteration_artifact_path(run_root: Path, artifact_name: str) -> Path | None:
+    candidates: list[tuple[int, Path]] = []
+    for iter_dir in (run_root / "iterations").glob("iter_*"):
+        match = re.fullmatch(r"iter_(\d+)", iter_dir.name)
+        if not match:
+            continue
+        artifact_path = iter_dir / "metrics" / artifact_name
+        if artifact_path.exists():
+            candidates.append((int(match.group(1)), artifact_path))
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda item: item[0])[-1][1]
+
+
 def _collect_inventory(run_root: Path, manifest: dict[str, Any], report_assets: dict[str, Any]) -> dict[str, Any]:
+    final_comparison_path = _iteration_artifact_path(run_root, "comparison_raw_vs_final.json")
     required = {
         "pipeline_manifest": run_root / "manifests" / "pipeline_manifest.json",
         "final_used_params": run_root / "final_used_params.json",
@@ -2515,7 +2788,8 @@ def _collect_inventory(run_root: Path, manifest: dict[str, Any], report_assets: 
         "input_metrics": Path(str(manifest.get("raw_metrics_json") or "")),
         "iter0_raw_vs_denoise": run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_denoise.json",
         "iter0_raw_vs_motion": run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_motion.json",
-        "iter1_raw_vs_final": run_root / "iterations" / "iter_1" / "metrics" / "comparison_raw_vs_final.json",
+        "final_iter_raw_vs_final": final_comparison_path
+        or run_root / "iterations" / "iter_1" / "metrics" / "comparison_raw_vs_final.json",
         "seg_backend_status": run_root / "segmentation" / "backend_status.json",
         "seg_run_status": run_root / "segmentation" / "run_status.json",
         "seg_summary": run_root / "segmentation" / "summary.json",
@@ -2777,9 +3051,15 @@ def build_deterministic_report(
     if raw_metrics is None:
         unavailable.append("input_metrics_missing")
         raw_metrics = {}
-    comp_denoise = _read_json(run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_denoise.json") or {}
-    comp_motion = _read_json(run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_motion.json") or {}
-    comp_final = _read_json(run_root / "iterations" / "iter_1" / "metrics" / "comparison_raw_vs_final.json") or {}
+    comp_denoise_path = run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_denoise.json"
+    comp_motion_path = run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_motion.json"
+    comp_final_path = (
+        _iteration_artifact_path(run_root, "comparison_raw_vs_final.json")
+        or run_root / "iterations" / "iter_1" / "metrics" / "comparison_raw_vs_final.json"
+    )
+    comp_denoise = _read_json(comp_denoise_path) or {}
+    comp_motion = _read_json(comp_motion_path) or {}
+    comp_final = _read_json(comp_final_path) or {}
     seg_summary = _read_json(run_root / "segmentation" / "summary.json") or {}
     seg_comp = _read_json(run_root / "segmentation" / "downstream_comparison.json") or {}
     raw_sel = _read_json(run_root / "segmentation" / "raw" / "roi_selection" / "selection_summary.json") or {}
@@ -3268,7 +3548,7 @@ def build_deterministic_report(
                 {"layout": "grid-1", "panels": [panel("Matched ROI crop grid (2x3)", crop_comparison_png, source=str(final_stack_path), note=f"Crop coordinates = ({roi_crop_region['x0']},{roi_crop_region['y0']})-({roi_crop_region['x1']},{roi_crop_region['y1']})")]},
                 {"layout": "grid-1", "panels": [panel("Motion-adaptive kymograph comparison", kymograph_bundle_png, source=str(final_stack_path), note=_kymograph_panel_note(kymograph_lines))]},
                 {"layout": "grid-2", "panels": [
-                    panel("Raw vs NeuroPilot quantitative bars", metric_bar_png, source=str(run_root / "iterations" / "iter_1" / "metrics" / "comparison_raw_vs_final.json"), note="Fixed-ROI SNR proxy comes from before/after metrics; jitter mean and jitter p95 are re-estimated on the displayed stacks"),
+                    panel("Raw vs NeuroPilot quantitative bars", metric_bar_png, source=str(comp_final_path), note="Fixed-ROI SNR proxy comes from before/after metrics; jitter mean and jitter p95 are re-estimated on the displayed stacks"),
                     panel("Residual jitter curve", motion_curve_png, source=str(final_shifts_npy or raw_shifts_npy or ""), note="Frame-to-frame residual rigid jitter estimated on the displayed stacks and converted to um using the configured pixel size; stability proxy rather than the internal PyLoReg motion field"),
                 ]},
                 {"layout": "grid-1", "panels": [panel("Correlation curve", corr_panel_png, source=str(corr_curve_csv), note="frame-to-temporal-mean projection correlation")]},
@@ -3357,6 +3637,10 @@ def build_deterministic_report(
                 "caption": sections[2]["caption"],
             }
         )
+    advisor_retrieval_bundle = _build_report_retrieval_bundle(run_root)
+    advisor_evidence_spec = _advisor_evidence_section(advisor_retrieval_bundle, run_root=run_root)
+    if advisor_evidence_spec is not None:
+        section_specs.append(advisor_evidence_spec)
     provenance_source = sections[3]
     section_specs.append(
         {
@@ -3496,13 +3780,14 @@ def build_deterministic_report(
                 "motion_curve_png": str(motion_curve_png),
                 "correlation_curve_csv": str(corr_curve_csv),
                 "used_intermediate_sections": bool(report_use_intermediate_sections),
+                "comparison_json_path": str(comp_final_path),
                 "report_motion_metrics": {
                     "raw": raw_motion_metric_for_report,
                     "final": final_motion_metric_for_report,
                 },
                 "intermediate_references": {
-                    "raw_vs_denoise_json": str(run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_denoise.json"),
-                    "raw_vs_motion_json": str(run_root / "iterations" / "iter_0" / "metrics" / "comparison_raw_vs_motion.json"),
+                    "raw_vs_denoise_json": str(comp_denoise_path),
+                    "raw_vs_motion_json": str(comp_motion_path),
                 },
             },
             "downstream_improvement": {
@@ -3523,11 +3808,14 @@ def build_deterministic_report(
             "effective_params_per_iteration": final_used_params.get("iterations", []),
             "downstream_paths": manifest.get("downstream", {}),
         },
+        "advisor_evidence": advisor_retrieval_bundle,
         "correlation_panel_source": "frame_to_temporal_mean_projection",
         "sections": sections,
     }
 
     report_dir.mkdir(parents=True, exist_ok=True)
+    if advisor_retrieval_bundle:
+        _write_json(report_dir / "advisor_retrieval_bundle.json", advisor_retrieval_bundle)
     report_data_path = report_dir / "report_data.json"
     report_manifest_path = report_dir / "report_manifest.json"
     report_html_path = report_dir / "report.html"

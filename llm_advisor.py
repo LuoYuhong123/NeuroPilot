@@ -15,6 +15,12 @@ from urllib import error, request
 ALLOWED_SAMPLE_MODES = ("XY", "T", "N2V")
 DEFAULT_EPOCH_RANGE = (1, 300)
 DEFAULT_BATCH_SIZE_RANGE = (1, 16)
+OPTIMIZATION_PRIORITIES = (
+    "balanced",
+    "snr_priority",
+    "motion_priority",
+    "segmentation_priority",
+)
 DEFAULT_MODEL = "gpt-4.1-mini"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 LOCAL_CONFIG_CANDIDATES = ("advisor_config.json", "configs/advisor_config.json")
@@ -297,6 +303,74 @@ def _sanitize_field(
     return int(clamped)
 
 
+def _extract_epoch_options(context: dict[str, Any], defaults: dict[str, Any]) -> list[int]:
+    ctx = context if isinstance(context, dict) else {}
+    suggestion_target = ctx.get("suggestion_target", {}) if isinstance(ctx.get("suggestion_target"), dict) else {}
+    raw_options = suggestion_target.get("epoch_options")
+    options: list[int] = []
+    if isinstance(raw_options, (list, tuple)):
+        for item in raw_options:
+            parsed = _to_int(item)
+            if parsed is not None and parsed > 0 and parsed not in options:
+                options.append(int(parsed))
+    if not options:
+        options = [int(defaults["n_epochs"])]
+    return sorted(options)
+
+
+def _extract_field_options(
+    context: dict[str, Any],
+    field_name: str,
+    defaults: dict[str, Any],
+) -> list[int]:
+    ctx = context if isinstance(context, dict) else {}
+    suggestion_target = ctx.get("suggestion_target", {}) if isinstance(ctx.get("suggestion_target"), dict) else {}
+    raw_options = None
+    if field_name == "batch_size":
+        raw_options = suggestion_target.get("batch_options")
+    else:
+        patch_options = suggestion_target.get("patch_options")
+        if isinstance(patch_options, dict):
+            raw_options = patch_options.get(field_name)
+    options: list[int] = []
+    if isinstance(raw_options, (list, tuple)):
+        for item in raw_options:
+            parsed = _to_int(item)
+            if parsed is not None and parsed > 0 and parsed not in options:
+                options.append(int(parsed))
+    if not options and field_name in defaults:
+        options = [int(defaults[field_name])]
+    return sorted(options)
+
+
+def _snap_to_options(value: int, options: list[int]) -> int:
+    if not options:
+        return int(value)
+    return int(min(options, key=lambda option: (abs(int(option) - int(value)), int(option))))
+
+
+def _sanitize_priority(value: Any, errors: list[str]) -> str:
+    priority = str(value or "").strip().lower()
+    if priority not in OPTIMIZATION_PRIORITIES:
+        if priority:
+            errors.append(f"invalid optimization_priority={priority}; fallback to balanced")
+        else:
+            errors.append("missing optimization_priority; fallback to balanced")
+        return "balanced"
+    return priority
+
+
+def _sanitize_text(value: Any, field_name: str, default: str, errors: list[str], max_len: int = 4000) -> str:
+    if value is None:
+        errors.append(f"missing {field_name}; default applied")
+        return default
+    text = str(value).strip()
+    if not text:
+        errors.append(f"empty {field_name}; default applied")
+        return default
+    return text[:max_len]
+
+
 def _build_fallback_suggestion(context: dict[str, Any], reason: str) -> dict[str, Any]:
     defaults = _extract_default_params(context)
     return {
@@ -306,6 +380,8 @@ def _build_fallback_suggestion(context: dict[str, Any], reason: str) -> dict[str
         "patch_t": defaults["patch_t"],
         "batch_size": defaults["batch_size"],
         "continue_iteration": True,
+        "optimization_priority": "balanced",
+        "stop_reason": f"fallback; continue conservatively: {reason}",
         "reason": f"fallback: {reason}",
     }
 
@@ -324,6 +400,30 @@ def validate_and_sanitize_suggestion(
     patch_y = _sanitize_field("patch_y", suggestion, defaults, bounds, errors)
     patch_t = _sanitize_field("patch_t", suggestion, defaults, bounds, errors)
     batch_size = _sanitize_field("batch_size", suggestion, defaults, bounds, errors)
+    epoch_options = _extract_epoch_options(ctx, defaults)
+    snapped_n_epochs = _snap_to_options(n_epochs, epoch_options)
+    if snapped_n_epochs != n_epochs:
+        errors.append(f"n_epochs snapped to allowed epoch option {snapped_n_epochs}")
+        n_epochs = snapped_n_epochs
+
+    for field_name, value in (
+        ("patch_x", patch_x),
+        ("patch_y", patch_y),
+        ("patch_t", patch_t),
+        ("batch_size", batch_size),
+    ):
+        options = _extract_field_options(ctx, field_name, defaults)
+        snapped = _snap_to_options(value, options)
+        if snapped != value:
+            errors.append(f"{field_name} snapped to allowed option {snapped}")
+        if field_name == "patch_x":
+            patch_x = snapped
+        elif field_name == "patch_y":
+            patch_y = snapped
+        elif field_name == "patch_t":
+            patch_t = snapped
+        elif field_name == "batch_size":
+            batch_size = snapped
 
     if defaults["sample_mode"] == "XY":
         adjusted = _prefer_even(patch_x, bounds["patch_x"][0], bounds["patch_x"][1])
@@ -341,15 +441,14 @@ def validate_and_sanitize_suggestion(
         continue_iteration = True
         errors.append("invalid or missing continue_iteration; fallback to True")
 
-    reason = suggestion.get("reason")
-    if reason is None:
-        reason = "no reason provided"
-        errors.append("missing reason; default reason applied")
-    else:
-        reason = str(reason).strip()
-        if not reason:
-            reason = "empty reason provided"
-            errors.append("empty reason; default reason applied")
+    optimization_priority = _sanitize_priority(suggestion.get("optimization_priority"), errors)
+    stop_reason = _sanitize_text(
+        suggestion.get("stop_reason"),
+        "stop_reason",
+        "continue by default; no stop reason provided",
+        errors,
+    )
+    reason = _sanitize_text(suggestion.get("reason"), "reason", "no reason provided", errors)
 
     sanitized = {
         "schema_version": "llm_advisor.suggestion.v2",
@@ -359,6 +458,8 @@ def validate_and_sanitize_suggestion(
         "patch_t": int(patch_t),
         "batch_size": int(batch_size),
         "continue_iteration": bool(continue_iteration),
+        "optimization_priority": optimization_priority,
+        "stop_reason": stop_reason,
         "reason": reason[:4000],
     }
     return sanitized, errors
@@ -416,6 +517,8 @@ def _build_mock_suggestion(context: dict[str, Any]) -> dict[str, Any]:
         "patch_t": _clamp_int(patch_t, bounds["patch_t"][0], bounds["patch_t"][1]),
         "batch_size": _clamp_int(batch_size, bounds["batch_size"][0], bounds["batch_size"][1]),
         "continue_iteration": True,
+        "optimization_priority": "balanced",
+        "stop_reason": "mock mode continues conservatively",
         "reason": "; ".join(reason_parts),
     }
 
@@ -427,6 +530,13 @@ def _build_live_request_payload(
     system_prompt = (
         "You are a strict next-iteration training parameter advisor for an imaging pipeline. "
         "sample_mode is locked by the pipeline and must not be suggested. "
+        "Only use epoch values from context.suggestion_target.epoch_options. "
+        "Only use patch values from context.suggestion_target.patch_options and batch values from "
+        "context.suggestion_target.batch_options. "
+        "When retrieval_context is present, use matched_experiments as local historical evidence and literature as domain evidence. "
+        "In reason, cite the most relevant run names and literature citations when they influence your recommendation. "
+        "Set continue_iteration=false only when enough iterations have completed and current metrics suggest additional "
+        "training is likely marginal or risky. "
         "Return valid JSON only. No markdown."
     )
     user_prompt = {
@@ -435,6 +545,19 @@ def _build_live_request_payload(
             "locked_by_pipeline": {
                 "sample_mode": "Do not suggest sample_mode. Use the pipeline default schedule already provided in context.",
             },
+            "retrieval_context": {
+                "usage": (
+                    "Use matched_experiments and literature as supporting evidence only. "
+                    "Do not copy settings blindly when metrics, dataset profile, or shape differ. "
+                    "Prefer current metrics and pipeline bounds when evidence conflicts."
+                ),
+                "experiment_citation_requirement": (
+                    "If matched_experiments are present and relevant, mention the key run_root or stack_name evidence in reason."
+                ),
+                "literature_citation_requirement": (
+                    "If literature entries are present and relevant, mention concise paper/page citations from citation fields in reason."
+                ),
+            },
             "allowed_fields": [
                 "n_epochs",
                 "patch_x",
@@ -442,14 +565,32 @@ def _build_live_request_payload(
                 "patch_t",
                 "batch_size",
                 "continue_iteration",
+                "optimization_priority",
+                "stop_reason",
                 "reason",
             ],
-            "note": "continue_iteration is record-only in v2.",
+            "note": (
+                "continue_iteration may be used by the pipeline control layer after minimum iteration guardrails. "
+                "n_epochs, patch_x, patch_y, patch_t, and batch_size are snapped to the finite options supplied in context.suggestion_target. "
+                "Medium-risk mode allows finite patch and batch buckets; sample_mode remains locked. "
+                "optimization_priority must be one of balanced, snr_priority, motion_priority, segmentation_priority. "
+                "stop_reason is required even when continue_iteration=true; explain the stop or continue decision."
+            ),
         },
         "context": context,
         "output_requirement": {
             "must_be_json_object": True,
-            "keys": ["n_epochs", "patch_x", "patch_y", "patch_t", "batch_size", "continue_iteration", "reason"],
+            "keys": [
+                "n_epochs",
+                "patch_x",
+                "patch_y",
+                "patch_t",
+                "batch_size",
+                "continue_iteration",
+                "optimization_priority",
+                "stop_reason",
+                "reason",
+            ],
         },
     }
 
@@ -466,9 +607,24 @@ def _build_live_request_payload(
                 "patch_t": {"type": "integer"},
                 "batch_size": {"type": "integer"},
                 "continue_iteration": {"type": "boolean"},
+                "optimization_priority": {
+                    "type": "string",
+                    "enum": list(OPTIMIZATION_PRIORITIES),
+                },
+                "stop_reason": {"type": "string"},
                 "reason": {"type": "string"},
             },
-            "required": ["n_epochs", "patch_x", "patch_y", "patch_t", "batch_size", "continue_iteration", "reason"],
+            "required": [
+                "n_epochs",
+                "patch_x",
+                "patch_y",
+                "patch_t",
+                "batch_size",
+                "continue_iteration",
+                "optimization_priority",
+                "stop_reason",
+                "reason",
+            ],
         },
     }
 

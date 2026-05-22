@@ -15,9 +15,15 @@ venv/
 # Local run inputs and outputs
 input_data/
 runs/
+failed_runs/
+rag_index/
 tmp_pipeline_metrics/
 roi_selection_outputs/
 logs/
+
+# Generated RAG validation/download bundles may contain local paths, run summaries, or transient URLs.
+literature/index/m3_*
+literature/manifest/download_report.json
 
 # Large demo movies are distributed as GitHub Release assets, not tracked in git.
 demo_data/raw_CA1/raw_CA1.tif

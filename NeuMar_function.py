@@ -146,6 +146,8 @@ def train_deepcad(
     visualize_images_per_epoch=False,
     save_test_images_per_epoch=False,
     batch_size=4,
+    seed=None,
+    deterministic_training=False,
 ):
     train_dict = {
         # dataset dependent parameters
@@ -174,6 +176,8 @@ def train_deepcad(
         "fmap": fmap,
         "GPU": gpu,
         "num_workers": num_workers,
+        "seed": seed,
+        "deterministic_training": deterministic_training,
 
         # viz
         "visualize_images_per_epoch": visualize_images_per_epoch,

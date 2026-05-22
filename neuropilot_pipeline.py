@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import hashlib
+import random
 import shutil
 import time
 from pathlib import Path
@@ -54,6 +55,7 @@ from utils import (
 )
 from pipeline_metrics import compute_metrics_for_tif, compare_two_metrics
 from llm_advisor import get_llm_suggestion, has_configured_api_key
+from rag.experiment_index import build_advisor_retrieval_bundle, parse_runs_roots
 from downstream_pipeline import materialize_final_and_run_downstream
 from report_builder import build_deterministic_report
 
@@ -328,7 +330,33 @@ SELECT_IMG_NUM      = 100000
 TEST_DATASIZE       = 100000
 TRAIN_MAX_TIFS_FOR_MODEL = max(0, _env_int("NEUROPILOT_TRAIN_MAX_TIFS", 4))
 
-iter_num = 2  # iter0 + iter1
+iter_num = 2  # legacy fixed baseline: iter0 + iter1
+ADVISOR_CONTROL_ENABLED = _env_bool("NEUROPILOT_ADVISOR_CONTROL_ENABLED", True)
+ADVISOR_MIN_COMPLETED_ITERS = max(1, _env_int("NEUROPILOT_ADVISOR_MIN_COMPLETED_ITERS", 2))
+ADVISOR_MAX_ITERS = max(ADVISOR_MIN_COMPLETED_ITERS, _env_int("NEUROPILOT_ADVISOR_MAX_ITERS", 3))
+ADVISOR_EPOCH_OPTIONS_XY = (15, 30)
+ADVISOR_EPOCH_OPTIONS_T = (30, 45, 60)
+ADVISOR_PARAM_STAGE = _env_text("NEUROPILOT_ADVISOR_PARAM_STAGE", "low").strip().lower()
+if ADVISOR_PARAM_STAGE not in {"low", "medium"}:
+    ADVISOR_PARAM_STAGE = "low"
+ADVISOR_PATCH_SCALE_OPTIONS_LOW = (1.0,)
+ADVISOR_PATCH_SCALE_OPTIONS_MEDIUM = (0.75, 1.0, 1.25)
+ADVISOR_BATCH_OPTIONS_LOW = (TRAIN_BATCH_SIZE_DEFAULT,)
+ADVISOR_BATCH_OPTIONS_MEDIUM = (2, 4, 6, 8)
+ADVISOR_OPTIMIZATION_PRIORITIES = (
+    "balanced",
+    "snr_priority",
+    "motion_priority",
+    "segmentation_priority",
+)
+ADVISOR_STOP_MIN_DELTA_SNR = _env_float("NEUROPILOT_ADVISOR_STOP_MIN_DELTA_SNR", 5.0)
+ADVISOR_STOP_MAX_FINAL_MOTION_MEAN_PX = _env_float("NEUROPILOT_ADVISOR_STOP_MAX_FINAL_MOTION_MEAN_PX", 2.0)
+ADVISOR_STOP_MAX_FINAL_JITTER_MEAN_PX = _env_float("NEUROPILOT_ADVISOR_STOP_MAX_FINAL_JITTER_MEAN_PX", 3.0)
+ADVISOR_STOP_MIN_MOTION_REDUCTION_FRACTION = _env_float("NEUROPILOT_ADVISOR_STOP_MIN_MOTION_REDUCTION_FRACTION", 0.5)
+PIPELINE_RANDOM_SEED = _env_int("NEUROPILOT_RANDOM_SEED", 20260522)
+PIPELINE_DETERMINISTIC_TRAINING = _env_bool("NEUROPILOT_DETERMINISTIC_TRAINING", True)
+os.environ.setdefault("PYTHONHASHSEED", str(PIPELINE_RANDOM_SEED))
+random.seed(int(PIPELINE_RANDOM_SEED))
 
 # pipeline mode: off | shadow | apply
 PIPELINE_LLM_MODE = _env_text("NEUROPILOT_PIPELINE_LLM_MODE", "shadow")
@@ -339,6 +367,16 @@ ADVISOR_API_KEY = None
 ADVISOR_MODEL = _env_text("LLM_ADVISOR_MODEL", "gpt-4.1-mini")
 ADVISOR_BASE_URL = _env_text("LLM_ADVISOR_BASE_URL", "https://api.openai.com/v1")
 ADVISOR_TIMEOUT_S = _env_float("LLM_ADVISOR_TIMEOUT_S", 20.0)
+RAG_ENABLED = _env_bool("NEUROPILOT_RAG_ENABLED", True)
+RAG_TOP_K = max(0, _env_int("NEUROPILOT_RAG_TOP_K", 5))
+RAG_RUNS_ROOTS_RAW = os.getenv("NEUROPILOT_RAG_RUNS_ROOTS", "").strip()
+RAG_LITERATURE_ENABLED = _env_bool("NEUROPILOT_RAG_LITERATURE_ENABLED", True)
+RAG_LITERATURE_TOP_K = max(0, _env_int("NEUROPILOT_RAG_LITERATURE_TOP_K", 5))
+RAG_LITERATURE_MAX_CHUNKS_PER_PAPER = max(1, _env_int("NEUROPILOT_RAG_LITERATURE_MAX_CHUNKS_PER_PAPER", 2))
+RAG_LITERATURE_CHUNKS = _env_text(
+    "NEUROPILOT_RAG_LITERATURE_CHUNKS",
+    str(ROOT_DIR / "literature" / "index" / "literature_chunks.jsonl"),
+).strip()
 
 # Dataset type switch:
 # - True: treat current input as cell-type imaging data and run downstream segmentation/trace extraction
@@ -488,6 +526,15 @@ def _coerce_int(value, fallback: int):
         return int(fallback)
 
 
+def _coerce_float(value, fallback: float | None = None):
+    try:
+        if value is None:
+            return fallback
+        return float(value)
+    except Exception:
+        return fallback
+
+
 def _clamp_int(value: int, low: int, high: int) -> int:
     low = int(low)
     high = int(high)
@@ -535,6 +582,58 @@ def get_batch_size_bounds(patch_x: int, patch_y: int, patch_t: int) -> tuple[int
     current_volume = max(1, int(patch_x) * int(patch_y) * int(patch_t))
     memory_cap = max(low, int(round(TRAIN_BATCH_SIZE_DEFAULT * baseline_volume / current_volume)))
     return low, min(high, memory_cap)
+
+
+def _dedupe_sorted_ints(values) -> list[int]:
+    out: list[int] = []
+    for value in values:
+        try:
+            parsed = int(round(float(value)))
+        except Exception:
+            continue
+        if parsed > 0 and parsed not in out:
+            out.append(parsed)
+    return sorted(out)
+
+
+def _snap_to_options(value: int, options: list[int]) -> int:
+    if not options:
+        return int(value)
+    return int(min(options, key=lambda item: (abs(int(item) - int(value)), int(item))))
+
+
+def get_patch_options_for_params(params: dict, datasets_path: str) -> dict[str, list[int]]:
+    defaults = sanitize_train_params(params, datasets_path)
+    bounds = get_patch_bounds(defaults["sample_mode"], datasets_path)
+    scales = (
+        ADVISOR_PATCH_SCALE_OPTIONS_MEDIUM
+        if ADVISOR_PARAM_STAGE == "medium"
+        else ADVISOR_PATCH_SCALE_OPTIONS_LOW
+    )
+    options: dict[str, list[int]] = {}
+    for field_name in ("patch_x", "patch_y", "patch_t"):
+        low, high = bounds[field_name]
+        base_value = int(defaults[field_name])
+        raw_values = [_clamp_int(int(round(base_value * float(scale))), low, high) for scale in scales]
+        raw_values.append(base_value)
+        values = []
+        for value in raw_values:
+            values.append(_prefer_even(value, low, high))
+        options[field_name] = _dedupe_sorted_ints(values)
+    return options
+
+
+def get_batch_options_for_patch(patch_x: int, patch_y: int, patch_t: int, default_batch_size: int) -> list[int]:
+    low, high = get_batch_size_bounds(patch_x=patch_x, patch_y=patch_y, patch_t=patch_t)
+    base_options = (
+        ADVISOR_BATCH_OPTIONS_MEDIUM
+        if ADVISOR_PARAM_STAGE == "medium"
+        else ADVISOR_BATCH_OPTIONS_LOW
+    )
+    candidates = [low, high]
+    candidates.extend(base_options)
+    candidates.append(default_batch_size)
+    return _dedupe_sorted_ints(_clamp_int(item, low, high) for item in candidates)
 
 
 def clamp_patch_to_data(
@@ -616,7 +715,38 @@ def get_advisor_target(target_defaults: dict, datasets_path: str) -> dict:
             "patch_t": bounds["patch_t"],
             "batch_size": [int(batch_bounds[0]), int(batch_bounds[1])],
         },
+        "epoch_options": get_epoch_options_for_params(target_defaults),
+        "parameter_stage": ADVISOR_PARAM_STAGE,
+        "patch_options": get_patch_options_for_params(target_defaults, datasets_path),
+        "batch_options": get_batch_options_for_patch(
+            patch_x=target_defaults["patch_x"],
+            patch_y=target_defaults["patch_y"],
+            patch_t=target_defaults["patch_t"],
+            default_batch_size=target_defaults["batch_size"],
+        ),
+        "risk_policy": {
+            "low": "n_epochs and continue_iteration only; patch and batch snap to defaults",
+            "medium": "finite patch scale buckets and batch buckets; sample_mode remains locked",
+        }.get(ADVISOR_PARAM_STAGE, "low"),
     }
+
+
+def get_epoch_options_for_params(params: dict) -> list[int]:
+    sample_mode = str(params.get("sample_mode", "T")).strip().upper()
+    if sample_mode == "XY":
+        options = list(ADVISOR_EPOCH_OPTIONS_XY)
+    else:
+        options = list(ADVISOR_EPOCH_OPTIONS_T)
+    default_epochs = _coerce_int(params.get("n_epochs"), options[0])
+    if default_epochs not in options:
+        options.append(int(default_epochs))
+    return sorted(int(item) for item in options if int(item) > 0)
+
+
+def snap_to_epoch_option(n_epochs: int, options: list[int]) -> int:
+    if not options:
+        return int(n_epochs)
+    return int(min(options, key=lambda item: (abs(int(item) - int(n_epochs)), int(item))))
 
 
 def validate_apply_fields(suggestion: dict, target_defaults: dict, datasets_path: str):
@@ -641,6 +771,11 @@ def validate_apply_fields(suggestion: dict, target_defaults: dict, datasets_path
         clamped = _clamp_int(n_epochs_val, 1, 300)
         if clamped != n_epochs_val:
             warnings.append(f"n_epochs={n_epochs_val} out of range, clamped to {clamped}")
+        epoch_options = get_epoch_options_for_params(target_defaults)
+        snapped = snap_to_epoch_option(clamped, epoch_options)
+        if snapped != clamped:
+            warnings.append(f"n_epochs={clamped} snapped to allowed epoch option {snapped}")
+        clamped = snapped
         resolved["n_epochs"] = clamped
 
     patch_x_val = _maybe_parse_int("patch_x")
@@ -656,6 +791,17 @@ def validate_apply_fields(suggestion: dict, target_defaults: dict, datasets_path
         datasets_path=datasets_path,
         sample_mode=resolved["sample_mode"],
     )
+    patch_options = get_patch_options_for_params(target_defaults, datasets_path)
+    snapped_patch_x = _snap_to_options(safe_patch_x, patch_options.get("patch_x", []))
+    snapped_patch_y = _snap_to_options(safe_patch_y, patch_options.get("patch_y", []))
+    snapped_patch_t = _snap_to_options(safe_patch_t, patch_options.get("patch_t", []))
+    if snapped_patch_x != safe_patch_x:
+        warnings.append(f"patch_x={safe_patch_x} snapped to allowed patch option {snapped_patch_x}")
+    if snapped_patch_y != safe_patch_y:
+        warnings.append(f"patch_y={safe_patch_y} snapped to allowed patch option {snapped_patch_y}")
+    if snapped_patch_t != safe_patch_t:
+        warnings.append(f"patch_t={safe_patch_t} snapped to allowed patch option {snapped_patch_t}")
+    safe_patch_x, safe_patch_y, safe_patch_t = snapped_patch_x, snapped_patch_y, snapped_patch_t
     if patch_x_val is not None and safe_patch_x != patch_x_val:
         warnings.append(f"patch_x={patch_x_val} adjusted to {safe_patch_x}")
     if patch_y_val is not None and safe_patch_y != patch_y_val:
@@ -674,6 +820,16 @@ def validate_apply_fields(suggestion: dict, target_defaults: dict, datasets_path
         patch_t=resolved["patch_t"],
     )
     safe_batch_size = _clamp_int(desired_batch_size, batch_low, batch_high)
+    batch_options = get_batch_options_for_patch(
+        patch_x=resolved["patch_x"],
+        patch_y=resolved["patch_y"],
+        patch_t=resolved["patch_t"],
+        default_batch_size=target_defaults["batch_size"],
+    )
+    snapped_batch_size = _snap_to_options(safe_batch_size, batch_options)
+    if snapped_batch_size != safe_batch_size:
+        warnings.append(f"batch_size={safe_batch_size} snapped to allowed batch option {snapped_batch_size}")
+    safe_batch_size = snapped_batch_size
     if batch_size_val is not None and safe_batch_size != batch_size_val:
         warnings.append(
             f"batch_size={batch_size_val} adjusted to {safe_batch_size} "
@@ -698,6 +854,217 @@ def normalize_pipeline_mode(mode: str) -> str:
     return mode
 
 
+def get_run_iter_limit(pipeline_mode: str) -> int:
+    if normalize_pipeline_mode(pipeline_mode) == "apply" and ADVISOR_CONTROL_ENABLED:
+        return max(int(ADVISOR_MIN_COMPLETED_ITERS), int(ADVISOR_MAX_ITERS))
+    return int(iter_num)
+
+
+def build_iteration_control_policy(run_iter_limit: int, pipeline_mode: str) -> dict:
+    enabled = bool(ADVISOR_CONTROL_ENABLED and normalize_pipeline_mode(pipeline_mode) == "apply")
+    return {
+        "schema_version": "neuropilot.iteration_control.v1",
+        "enabled": enabled,
+        "parameter_stage": ADVISOR_PARAM_STAGE,
+        "min_completed_iters": int(ADVISOR_MIN_COMPLETED_ITERS),
+        "max_iters": int(run_iter_limit),
+        "fallback_controls_flow": False,
+        "continue_iteration_effective_after_min_iters": enabled,
+        "epoch_options_xy": list(ADVISOR_EPOCH_OPTIONS_XY),
+        "epoch_options_t": list(ADVISOR_EPOCH_OPTIONS_T),
+        "patch_scale_options": list(
+            ADVISOR_PATCH_SCALE_OPTIONS_MEDIUM
+            if ADVISOR_PARAM_STAGE == "medium"
+            else ADVISOR_PATCH_SCALE_OPTIONS_LOW
+        ),
+        "batch_options": list(
+            ADVISOR_BATCH_OPTIONS_MEDIUM
+            if ADVISOR_PARAM_STAGE == "medium"
+            else ADVISOR_BATCH_OPTIONS_LOW
+        ),
+        "optimization_priorities": list(ADVISOR_OPTIMIZATION_PRIORITIES),
+        "random_seed": int(PIPELINE_RANDOM_SEED),
+        "deterministic_training": bool(PIPELINE_DETERMINISTIC_TRAINING),
+        "stop_quality_rules": {
+            "final_candidate_semantic": "last_iter_denoised_output",
+            "min_delta_snr": float(ADVISOR_STOP_MIN_DELTA_SNR),
+            "max_final_motion_mean_px": float(ADVISOR_STOP_MAX_FINAL_MOTION_MEAN_PX),
+            "max_final_jitter_mean_px": float(ADVISOR_STOP_MAX_FINAL_JITTER_MEAN_PX),
+            "min_motion_reduction_fraction": float(ADVISOR_STOP_MIN_MOTION_REDUCTION_FRACTION),
+            "policy": (
+                "after minimum iterations, an LLM stop request is accepted only when the final candidate "
+                "denoised output has meaningful SNR improvement and motion/jitter are already low or clearly reduced"
+            ),
+        },
+    }
+
+
+def _nested_float(data: dict | None, *keys, fallback: float | None = None):
+    value = data
+    for key in keys:
+        if not isinstance(value, dict):
+            return fallback
+        value = value.get(key)
+    return _coerce_float(value, fallback)
+
+
+def evaluate_stop_quality_gate(quality_context: dict | None) -> dict:
+    if not isinstance(quality_context, dict):
+        return {
+            "schema_version": "neuropilot.stop_quality_gate.v1",
+            "allow_stop": False,
+            "reason": "quality_context_missing",
+        }
+    comparison = quality_context.get("raw_vs_final_candidate")
+    comparison_source = "raw_vs_final_candidate"
+    if not isinstance(comparison, dict):
+        comparison = quality_context.get("raw_vs_current_stage")
+        comparison_source = "raw_vs_current_stage"
+    if not isinstance(comparison, dict):
+        return {
+            "schema_version": "neuropilot.stop_quality_gate.v1",
+            "allow_stop": False,
+            "reason": "quality_comparison_missing",
+        }
+
+    raw_snr = _nested_float(comparison, "snr_before_after", "raw_snr")
+    final_snr = _nested_float(comparison, "snr_before_after", "final_snr")
+    delta_snr = _nested_float(comparison, "snr_before_after", "delta_snr")
+    raw_motion = _nested_float(comparison, "motion_before_after", "raw", "motion_mean_px")
+    final_motion = _nested_float(comparison, "motion_before_after", "final", "motion_mean_px")
+    raw_jitter = _nested_float(comparison, "motion_before_after", "raw", "jitter_mean_px")
+    final_jitter = _nested_float(comparison, "motion_before_after", "final", "jitter_mean_px")
+
+    motion_reduction = None
+    if raw_motion is not None and raw_motion > 0 and final_motion is not None:
+        motion_reduction = (raw_motion - final_motion) / raw_motion
+    jitter_reduction = None
+    if raw_jitter is not None and raw_jitter > 0 and final_jitter is not None:
+        jitter_reduction = (raw_jitter - final_jitter) / raw_jitter
+
+    snr_ok = (
+        delta_snr is not None
+        and final_snr is not None
+        and raw_snr is not None
+        and delta_snr >= float(ADVISOR_STOP_MIN_DELTA_SNR)
+        and final_snr >= raw_snr
+    )
+    motion_ok = (
+        final_motion is not None
+        and (
+            final_motion <= float(ADVISOR_STOP_MAX_FINAL_MOTION_MEAN_PX)
+            or (
+                motion_reduction is not None
+                and motion_reduction >= float(ADVISOR_STOP_MIN_MOTION_REDUCTION_FRACTION)
+            )
+        )
+    )
+    jitter_ok = (
+        final_jitter is not None
+        and (
+            final_jitter <= float(ADVISOR_STOP_MAX_FINAL_JITTER_MEAN_PX)
+            or (
+                jitter_reduction is not None
+                and jitter_reduction >= float(ADVISOR_STOP_MIN_MOTION_REDUCTION_FRACTION)
+            )
+        )
+    )
+    failed = []
+    if not snr_ok:
+        failed.append("snr_not_sufficiently_improved")
+    if not motion_ok:
+        failed.append("motion_not_low_or_reduced")
+    if not jitter_ok:
+        failed.append("jitter_not_low_or_reduced")
+    return {
+        "schema_version": "neuropilot.stop_quality_gate.v1",
+        "allow_stop": bool(snr_ok and motion_ok and jitter_ok),
+        "comparison_source": comparison_source,
+        "final_candidate_semantic": quality_context.get("final_candidate_semantic", "unknown"),
+        "thresholds": {
+            "min_delta_snr": float(ADVISOR_STOP_MIN_DELTA_SNR),
+            "max_final_motion_mean_px": float(ADVISOR_STOP_MAX_FINAL_MOTION_MEAN_PX),
+            "max_final_jitter_mean_px": float(ADVISOR_STOP_MAX_FINAL_JITTER_MEAN_PX),
+            "min_motion_reduction_fraction": float(ADVISOR_STOP_MIN_MOTION_REDUCTION_FRACTION),
+        },
+        "metrics": {
+            "raw_snr": raw_snr,
+            "final_snr": final_snr,
+            "delta_snr": delta_snr,
+            "raw_motion_mean_px": raw_motion,
+            "final_motion_mean_px": final_motion,
+            "motion_reduction_fraction": motion_reduction,
+            "raw_jitter_mean_px": raw_jitter,
+            "final_jitter_mean_px": final_jitter,
+            "jitter_reduction_fraction": jitter_reduction,
+        },
+        "checks": {
+            "snr_ok": bool(snr_ok),
+            "motion_ok": bool(motion_ok),
+            "jitter_ok": bool(jitter_ok),
+        },
+        "failed_reasons": failed,
+    }
+
+
+def evaluate_iteration_control(
+    *,
+    llm_suggestion: dict,
+    iter_index: int,
+    run_iter_limit: int,
+    pipeline_mode: str,
+    quality_context: dict | None = None,
+) -> dict:
+    completed_iters = int(iter_index) + 1
+    has_next_slot = int(iter_index) < int(run_iter_limit) - 1
+    enabled = bool(ADVISOR_CONTROL_ENABLED and normalize_pipeline_mode(pipeline_mode) == "apply")
+    used_fallback = bool((llm_suggestion.get("meta") or {}).get("used_fallback"))
+    requested_continue = bool(llm_suggestion.get("continue_iteration"))
+    reasons = []
+    quality_gate = evaluate_stop_quality_gate(quality_context)
+
+    if not has_next_slot:
+        continue_next = False
+        reasons.append("max_iteration_limit_reached")
+    elif not enabled:
+        continue_next = True
+        reasons.append("advisor_iteration_control_disabled")
+    elif used_fallback:
+        continue_next = True
+        reasons.append("fallback_suggestion_cannot_stop_or_extend_flow")
+    elif completed_iters < int(ADVISOR_MIN_COMPLETED_ITERS):
+        continue_next = True
+        reasons.append("minimum_completed_iterations_guardrail")
+    else:
+        if requested_continue:
+            continue_next = True
+            reasons.append("llm_continue_iteration_applied")
+        elif quality_gate.get("allow_stop"):
+            continue_next = False
+            reasons.append("llm_requested_stop_after_minimum")
+            reasons.append("quality_gate_allows_stop")
+        else:
+            continue_next = True
+            reasons.append("llm_stop_blocked_by_quality_gate")
+            reasons.extend(str(item) for item in quality_gate.get("failed_reasons", []))
+
+    return {
+        "schema_version": "neuropilot.iteration_control_decision.v1",
+        "enabled": enabled,
+        "iter_index": int(iter_index),
+        "completed_iters": completed_iters,
+        "has_next_slot": has_next_slot,
+        "requested_continue_iteration": requested_continue,
+        "continue_next_iteration": bool(continue_next),
+        "stop_after_current_iter": bool(has_next_slot and not continue_next),
+        "used_fallback": used_fallback,
+        "optimization_priority": str(llm_suggestion.get("optimization_priority") or "balanced"),
+        "stop_reason": str(llm_suggestion.get("stop_reason") or ""),
+        "guardrail_reasons": reasons,
+        "quality_gate": quality_gate,
+    }
+
+
 def normalize_backend_mode(mode: str) -> str:
     mode = str(mode).strip().lower()
     if mode not in ("mock", "live"):
@@ -715,39 +1082,14 @@ def resolve_advisor_backend(pipeline_mode: str, configured_backend: str) -> str:
     return backend
 
 
-TIF_MANIFEST_NAME = "tif_manifest.json"
-
-
-def _manifest_tif_paths(folder: str | Path) -> list[Path]:
-    root = Path(folder).expanduser()
-    manifest_path = root if root.is_file() else root / TIF_MANIFEST_NAME
-    if not manifest_path.is_file():
-        return []
-    try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    raw_entries = payload.get("tifs") or payload.get("selected_tifs") or []
-    paths: list[Path] = []
-    for entry in raw_entries:
-        raw_path = entry.get("path") if isinstance(entry, dict) else entry
-        if not raw_path:
-            continue
-        candidate = Path(str(raw_path)).expanduser()
-        if candidate.is_file() and candidate.suffix.lower() in (".tif", ".tiff"):
-            paths.append(candidate)
-    return sorted(paths, key=lambda p: p.name.lower())
-
-
 def list_tif_paths(folder: str | Path) -> list[Path]:
     root = Path(folder).expanduser()
     if not root.exists() or not root.is_dir():
         raise FileNotFoundError(f"Input folder not found: {root}")
-    direct_tifs = sorted(
+    return sorted(
         [p for p in root.iterdir() if p.is_file() and p.suffix.lower() in (".tif", ".tiff")],
         key=lambda p: p.name.lower(),
     )
-    return direct_tifs or _manifest_tif_paths(root)
 
 
 def get_single_tif_path_strict(folder: str | Path) -> Path:
@@ -824,33 +1166,6 @@ def materialize_tif_subset(src_paths: list[Path], target_dir: str | Path) -> Pat
     for src in src_paths:
         link_or_copy_tif(src, target_dir / src.name)
     return target_dir
-
-
-def write_tif_reference_manifest(src_paths: list[Path], target_dir: str | Path) -> Path:
-    target_dir = Path(target_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    # This directory is a generated DeepCAD training subset cache. Remove stale
-    # materialized TIFF entries so future runs do not keep large duplicate files.
-    for stale_tif in target_dir.iterdir():
-        if stale_tif.is_file() and stale_tif.suffix.lower() in (".tif", ".tiff"):
-            stale_tif.unlink()
-
-    manifest_path = target_dir / TIF_MANIFEST_NAME
-    entries = []
-    for src in src_paths:
-        src_path = Path(src).expanduser().resolve()
-        entries.append(tif_identity(src_path))
-    write_json(
-        manifest_path,
-        {
-            "schema_version": "neuropilot.tif_manifest.v1",
-            "storage": "reference_paths",
-            "note": "Training inputs are referenced by absolute path instead of copied into this folder.",
-            "tifs": entries,
-        },
-    )
-    return manifest_path
 
 
 def get_first_tif_shape(datasets_path: str | Path):
@@ -951,6 +1266,7 @@ def train_one_model_if_needed(
     pth_name = (
         f"{folder_name}_iter{iiii}_{sample_mode}"
         f"_e{n_epochs}_x{patch_x}_y{patch_y}_t{patch_t}_b{batch_size}"
+        f"_s{int(PIPELINE_RANDOM_SEED)}"
     )
     train_pth_dir = Path(train_pth_dir)
     train_model_dir = train_pth_dir / pth_name
@@ -967,6 +1283,8 @@ def train_one_model_if_needed(
         "patch_t": int(patch_t),
         "batch_size": int(batch_size),
         "gpu": str(GPU),
+        "seed": int(PIPELINE_RANDOM_SEED),
+        "deterministic_training": bool(PIPELINE_DETERMINISTIC_TRAINING),
         "training_selection": training_selection or [],
     }
 
@@ -1012,6 +1330,8 @@ def train_one_model_if_needed(
         select_img_num=SELECT_IMG_NUM,
         sample_mode=sample_mode,
         batch_size=batch_size,
+        seed=int(PIPELINE_RANDOM_SEED),
+        deterministic_training=bool(PIPELINE_DETERMINISTIC_TRAINING),
     )
     train_wall_time_sec = float(time.time() - train_start)
     save_stage_sidecar(train_model_dir, "train.params.json", "train_deepcad", train_params)
@@ -1047,6 +1367,9 @@ def clone_llm_artifacts(shared_llm_dir: str | Path, target_llm_dir: str | Path) 
         "request.json",
         "response_raw.json",
         "suggestion_validated.json",
+        "retrieval_bundle.json",
+        "experiment_index.json",
+        "retrieval_error.json",
         "applied_diff.json",
         "continue_iteration_record.json",
         "apply_warnings.json",
@@ -1213,6 +1536,8 @@ def run_one_folder(folder_name: str) -> None:
 
     pipeline_mode = normalize_pipeline_mode(PIPELINE_LLM_MODE)
     advisor_backend = resolve_advisor_backend(pipeline_mode, ADVISOR_BACKEND)
+    run_iter_limit = get_run_iter_limit(pipeline_mode)
+    iteration_control_policy = build_iteration_control_policy(run_iter_limit, pipeline_mode)
     training_raw_tifs = choose_training_tifs(raw_tif_paths, TRAIN_MAX_TIFS_FOR_MODEL)
     training_names = {path.name for path in training_raw_tifs}
 
@@ -1220,7 +1545,7 @@ def run_one_folder(folder_name: str) -> None:
         f"[PIPELINE-MODE] folder={folder_name} folder_tag={folder_tag} "
         f"pipeline_mode={pipeline_mode} is_cell_data={IS_CELL_DATA} "
         f"dataset_profile={DATASET_PROFILE} advisor_backend={advisor_backend} "
-        f"iter_num={iter_num} tif_count={len(raw_tif_paths)} "
+        f"iter_num={run_iter_limit} tif_count={len(raw_tif_paths)} "
         f"train_tif_count={len(training_raw_tifs)}"
     )
     print("[TRAIN-TIF-SELECTION] =>", [path.name for path in training_raw_tifs])
@@ -1243,9 +1568,15 @@ def run_one_folder(folder_name: str) -> None:
         for raw_tif_path in raw_tif_paths
     ]
     control_state = next((state for state in states if state["raw_tif_name"] in training_names), states[0])
+    for state in states:
+            state["pipeline_manifest"]["iter_num"] = int(run_iter_limit)
+            state["pipeline_manifest"]["iteration_control_policy"] = iteration_control_policy
+            state["pipeline_manifest"]["advisor_parameter_stage"] = ADVISOR_PARAM_STAGE
+            state["pipeline_manifest"]["random_seed"] = int(PIPELINE_RANDOM_SEED)
+            state["pipeline_manifest"]["deterministic_training"] = bool(PIPELINE_DETERMINISTIC_TRAINING)
     next_iter_overrides = {}
 
-    for iiii in range(iter_num):
+    for iiii in range(run_iter_limit):
         selected_stage_tifs = [
             get_single_tif_path_strict(state["current_input_dir"])
             for state in states
@@ -1253,7 +1584,7 @@ def run_one_folder(folder_name: str) -> None:
         ]
         subset_hash = tif_selection_fingerprint(selected_stage_tifs)
         train_subset_dir = shared_root / "train_inputs" / f"iter_{iiii}_{subset_hash}"
-        train_subset_manifest_path = write_tif_reference_manifest(selected_stage_tifs, train_subset_dir)
+        materialize_tif_subset(selected_stage_tifs, train_subset_dir)
         training_selection = [tif_identity(path) for path in selected_stage_tifs]
 
         default_params = sanitize_train_params(get_default_iter_params(iiii), train_subset_dir)
@@ -1309,7 +1640,6 @@ def run_one_folder(folder_name: str) -> None:
                     "effective_params": current_params,
                     "param_source": param_source,
                     "shared_train_subset_dir": str(train_subset_dir),
-                    "shared_train_manifest": str(train_subset_manifest_path),
                     "shared_train_model": str(test_pth_path / test_deepcad_model),
                 }
             )
@@ -1348,7 +1678,6 @@ def run_one_folder(folder_name: str) -> None:
                 "scale_factor": int(SCALE_FACTOR),
                 "test_datasize": int(TEST_DATASIZE),
                 "shared_train_subset_dir": str(train_subset_dir),
-                "shared_train_manifest": str(train_subset_manifest_path),
                 "raw_tif_name": state["raw_tif_name"],
             }
 
@@ -1403,7 +1732,7 @@ def run_one_folder(folder_name: str) -> None:
             current_stage_name = "denoise"
             raw_vs_current_comparison = raw_vs_denoise
 
-            if iiii < iter_num - 1:
+            if iiii < run_iter_limit - 1:
                 demotion_input_path = output_path
                 demotion_output_path = demotion_root / f"{state['stack_tag']}_iter{iiii}_demotion"
                 ensure_dir(str(demotion_output_path))
@@ -1467,7 +1796,7 @@ def run_one_folder(folder_name: str) -> None:
                 raw_vs_current_comparison = raw_vs_motion
                 state["current_input_dir"] = demotion_output_path
 
-            if iiii == iter_num - 1:
+            if iiii == run_iter_limit - 1:
                 raw_vs_final = compare_two_metrics(state["raw_metrics"], current_stage_metrics)
                 write_json(iter_metrics_dir / "comparison_raw_vs_final.json", raw_vs_final)
 
@@ -1477,9 +1806,11 @@ def run_one_folder(folder_name: str) -> None:
                 "current_stage_metrics": current_stage_metrics,
                 "current_stage_name": current_stage_name,
                 "raw_vs_current_comparison": raw_vs_current_comparison,
+                "raw_vs_final_candidate_comparison": raw_vs_denoise,
+                "final_candidate_semantic": "last_iter_denoised_output",
             }
 
-        target_iter_index = iiii + 1 if iiii < iter_num - 1 else None
+        target_iter_index = iiii + 1 if iiii < run_iter_limit - 1 else None
         target_datasets_path = control_state["current_input_dir"] if target_iter_index is not None else train_subset_dir
         target_defaults = sanitize_train_params(
             get_default_iter_params(iiii if target_iter_index is None else target_iter_index),
@@ -1490,6 +1821,10 @@ def run_one_folder(folder_name: str) -> None:
         advisor_target["mode_policy"] = {
             "iter_0": "XY",
             "iter_ge_1": "T",
+        }
+        advisor_target["iteration_control"] = {
+            **iteration_control_policy,
+            "current_completed_iters_after_this_iter": int(iiii) + 1,
         }
 
         shared_llm_dir = shared_iterations_root / f"iter_{iiii}" / "llm"
@@ -1504,15 +1839,28 @@ def run_one_folder(folder_name: str) -> None:
             "shared_training": {
                 "enabled": True,
                 "train_subset_dir": str(train_subset_dir),
-                "train_subset_manifest": str(train_subset_manifest_path),
                 "selected_tifs": training_selection,
                 "reference_stack_for_llm": control_state["raw_tif_name"],
             },
             "execution_policy": (
                 "v2 apply-only-for(n_epochs,patch_x,patch_y,patch_t,batch_size); "
                 "sample_mode locked to default schedule(iter0=XY,iter>=1=T); "
-                "continue_iteration is record-only"
+                "continue_iteration controls whether to enter the next iteration after guardrails; "
+                "n_epochs is snapped to allowed epoch_options; patch and batch are snapped to stage-specific options; "
+                "optimization_priority and stop_reason are recorded for decision traceability"
             ),
+            "iteration_control": iteration_control_policy,
+            "random_seed": int(PIPELINE_RANDOM_SEED),
+            "rag": {
+                "enabled": bool(RAG_ENABLED),
+                "top_k": int(RAG_TOP_K),
+                "runs_roots_env": RAG_RUNS_ROOTS_RAW or None,
+                "literature_enabled": bool(RAG_LITERATURE_ENABLED),
+                "literature_top_k": int(RAG_LITERATURE_TOP_K),
+                "literature_max_chunks_per_paper": int(RAG_LITERATURE_MAX_CHUNKS_PER_PAPER),
+                "literature_chunks": RAG_LITERATURE_CHUNKS or None,
+                "retrieval_scope": "local historical NeuroPilot runs + local literature chunks",
+            },
         }
         write_json(shared_llm_dir / "mode.json", llm_mode_payload)
         print(
@@ -1541,12 +1889,56 @@ def run_one_folder(folder_name: str) -> None:
                 "selected_training_tifs": [path.name for path in training_raw_tifs],
                 "reference_stack_for_llm": control_state["raw_tif_name"],
             },
+            "iteration_control_quality": {
+                "final_candidate_semantic": control_iter_context.get("final_candidate_semantic"),
+                "raw_vs_final_candidate": control_iter_context.get("raw_vs_final_candidate_comparison"),
+                "raw_vs_current_stage": control_iter_context.get("raw_vs_current_comparison"),
+                "stop_rules": iteration_control_policy.get("stop_quality_rules"),
+            },
         }
-        if iiii == iter_num - 1:
+        if iiii == run_iter_limit - 1:
             llm_context["comparisons"]["raw_vs_final"] = compare_two_metrics(
                 control_state["raw_metrics"],
                 control_iter_context["current_stage_metrics"],
             )
+
+        if RAG_ENABLED and RAG_TOP_K > 0:
+            try:
+                rag_runs_roots = parse_runs_roots(
+                    RAG_RUNS_ROOTS_RAW or None,
+                    current_run_root=control_state["run_root"],
+                )
+                retrieval_bundle = build_advisor_retrieval_bundle(
+                    llm_context,
+                    runs_roots=rag_runs_roots,
+                    current_run_root=control_state["run_root"],
+                    top_k=RAG_TOP_K,
+                    index_output_path=shared_llm_dir / "experiment_index.json",
+                    literature_enabled=RAG_LITERATURE_ENABLED,
+                    literature_chunks_path=RAG_LITERATURE_CHUNKS or None,
+                    literature_top_k=RAG_LITERATURE_TOP_K,
+                    literature_max_chunks_per_paper=RAG_LITERATURE_MAX_CHUNKS_PER_PAPER,
+                )
+                llm_context["retrieval_context"] = retrieval_bundle
+                write_json(shared_llm_dir / "retrieval_bundle.json", retrieval_bundle)
+                print(
+                    f"[RAG] iter={iiii} matched "
+                    f"{len(retrieval_bundle.get('matched_experiments', []))}/"
+                    f"{retrieval_bundle.get('candidate_count', 0)} historical experiments; "
+                    f"{len(retrieval_bundle.get('literature', []))} literature chunks"
+                )
+            except Exception as exc:
+                retrieval_error = {
+                    "schema_version": "neuropilot_rag.retrieval_error.v1",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "rag_enabled": bool(RAG_ENABLED),
+                    "top_k": int(RAG_TOP_K),
+                    "timestamp": now_tag(),
+                }
+                llm_context["retrieval_context"] = retrieval_error
+                write_json(shared_llm_dir / "retrieval_error.json", retrieval_error)
+                print(f"\033[93m[WARN]\033[0m RAG retrieval failed for iter={iiii}: {type(exc).__name__}: {exc}")
 
         if pipeline_mode == "off":
             off_defaults = advisor_target["default_params"]
@@ -1558,6 +1950,8 @@ def run_one_folder(folder_name: str) -> None:
                 "patch_t": off_defaults["patch_t"],
                 "batch_size": off_defaults["batch_size"],
                 "continue_iteration": True,
+                "optimization_priority": "balanced",
+                "stop_reason": "pipeline LLM mode off",
                 "reason": "pipeline llm mode off",
                 "meta": {
                     "advisor_mode": "off",
@@ -1600,7 +1994,8 @@ def run_one_folder(folder_name: str) -> None:
             f"suggested_patch=({llm_suggestion.get('patch_x')},{llm_suggestion.get('patch_y')},"
             f"{llm_suggestion.get('patch_t')}) "
             f"suggested_batch_size={llm_suggestion.get('batch_size')} "
-            f"continue_iteration(record_only)={llm_suggestion.get('continue_iteration')}"
+            f"continue_iteration={llm_suggestion.get('continue_iteration')} "
+            f"priority={llm_suggestion.get('optimization_priority')}"
         )
 
         applied_changes = {}
@@ -1608,7 +2003,7 @@ def run_one_folder(folder_name: str) -> None:
         applied_to_iter = None
         not_applied_reason = None
         apply_warnings = []
-        if pipeline_mode == "apply" and iiii < iter_num - 1:
+        if pipeline_mode == "apply" and iiii < run_iter_limit - 1:
             suggestion_target_iter = iiii + 1
             next_default = dict(advisor_target["default_params"])
             next_effective, warnings, accepted_fields = validate_apply_fields(
@@ -1640,13 +2035,37 @@ def run_one_folder(folder_name: str) -> None:
                 f"[APPLY-PLAN] from iter={iiii} -> iter={iiii+1} "
                 f"default={next_default} effective={next_effective}"
             )
-        elif pipeline_mode == "apply" and iiii == iter_num - 1:
+        elif pipeline_mode == "apply" and iiii == run_iter_limit - 1:
             suggestion_target_iter = None
             applied_to_iter = None
             not_applied_reason = "no_next_iteration"
             print(f"[APPLY-PLAN] iter={iiii} is last iter; suggestion recorded but no next-iter apply.")
         else:
             not_applied_reason = "pipeline_mode_not_apply"
+
+        iteration_control_decision = evaluate_iteration_control(
+            llm_suggestion=llm_suggestion,
+            iter_index=iiii,
+            run_iter_limit=run_iter_limit,
+            pipeline_mode=pipeline_mode,
+            quality_context=llm_context.get("iteration_control_quality"),
+        )
+        if iteration_control_decision["stop_after_current_iter"]:
+            next_iter_overrides.pop(iiii + 1, None)
+            applied_to_iter = None
+            if applied_changes:
+                not_applied_reason = "iteration_control_stop_after_current_iter"
+                applied_changes = {}
+            print(
+                f"[ITER-CONTROL] stop after iter={iiii}: "
+                f"reason={iteration_control_decision['stop_reason']} "
+                f"guardrails={iteration_control_decision['guardrail_reasons']}"
+            )
+        else:
+            print(
+                f"[ITER-CONTROL] continue_next={iteration_control_decision['continue_next_iteration']} "
+                f"iter={iiii} guardrails={iteration_control_decision['guardrail_reasons']}"
+            )
 
         applied_diff = {
             "suggestion_target_iter": suggestion_target_iter,
@@ -1656,7 +2075,12 @@ def run_one_folder(folder_name: str) -> None:
         }
 
         write_json(shared_llm_dir / "applied_diff.json", applied_diff)
-        write_json(shared_llm_dir / "continue_iteration_record.json", {"continue_iteration": llm_suggestion.get("continue_iteration")})
+        write_json(shared_llm_dir / "continue_iteration_record.json", {
+            "continue_iteration": llm_suggestion.get("continue_iteration"),
+            "optimization_priority": llm_suggestion.get("optimization_priority"),
+            "stop_reason": llm_suggestion.get("stop_reason"),
+        })
+        write_json(shared_llm_dir / "iteration_control_record.json", iteration_control_decision)
         if apply_warnings:
             write_json(shared_llm_dir / "apply_warnings.json", {"warnings": apply_warnings})
 
@@ -1670,7 +2094,6 @@ def run_one_folder(folder_name: str) -> None:
                     "param_source": param_source,
                     "train_runtime_summary": train_runtime_summary,
                     "shared_train_subset_dir": str(train_subset_dir),
-                    "shared_train_manifest": str(train_subset_manifest_path),
                     "shared_train_model": str(test_pth_path / test_deepcad_model),
                     "llm_target_default_params": advisor_target["default_params"],
                     "current_stage": iter_context["current_stage_name"],
@@ -1679,11 +2102,17 @@ def run_one_folder(folder_name: str) -> None:
                     "shared_llm_dir": str(shared_llm_dir),
                     "llm_reference_stack": control_state["raw_tif_name"],
                     "llm_continue_iteration_recorded": llm_suggestion.get("continue_iteration"),
+                    "llm_optimization_priority": llm_suggestion.get("optimization_priority"),
+                    "llm_stop_reason": llm_suggestion.get("stop_reason"),
+                    "iteration_control_decision": iteration_control_decision,
                     "suggestion_target_iter": suggestion_target_iter,
                     "applied_to_iter": applied_to_iter,
                     "not_applied_reason": not_applied_reason,
                 }
             )
+
+        if iteration_control_decision["stop_after_current_iter"]:
+            break
 
     for state in states:
         if state["last_iter_denoise_tif_path"] is None:

@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "top_k": 5,
+  "runs_roots": [
+    "runs"
+  ],
+  "literature_enabled": true,
+  "literature_chunks": "literature/index/literature_chunks.jsonl",
+  "literature_top_k": 5,
+  "literature_max_chunks_per_paper": 2,
+  "retrieval_mode": "local_experiment_history+local_literature_bm25",
+  "notes": [
+    "Use NEUROPILOT_RAG_RUNS_ROOTS for runtime path overrides.",
+    "Use NEUROPILOT_RAG_LITERATURE_CHUNKS to point to a rebuilt local literature chunk file."
+  ]
+}

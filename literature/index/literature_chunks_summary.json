@@ -1,0 +1,275 @@
+{
+  "schema_version": "neuropilot_rag.literature_chunk_summary.v1",
+  "generated_at_utc": "2026-05-21T03:40:57+00:00",
+  "chunking": {
+    "chunk_words": 900,
+    "overlap_words": 120,
+    "min_chunk_chars": 160
+  },
+  "summary": {
+    "document_count": 25,
+    "extracted_document_count": 20,
+    "chunk_count": 607,
+    "core_neuropilot_chunk_count": 73,
+    "status_counts": {
+      "extracted": 20,
+      "skipped_no_pdf": 5
+    },
+    "backend_counts": {
+      "pypdf": 20
+    },
+    "total_words": 275736
+  },
+  "documents": [
+    {
+      "paper_id": "neuropilot_main_20260420",
+      "title": "NeuroPilot main manuscript",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 49,
+      "chunk_count": 46,
+      "word_count": 10639,
+      "is_core_neuropilot": true,
+      "pdf_path": "literature/raw/Neuropilot/NeuroPilot_main_20260420.pdf"
+    },
+    {
+      "paper_id": "neuropilot_supplementary_materials_20260419",
+      "title": "NeuroPilot supplementary materials",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 29,
+      "chunk_count": 27,
+      "word_count": 3518,
+      "is_core_neuropilot": true,
+      "pdf_path": "literature/raw/Neuropilot/NeuroPilot_supplementary_materials_20260419.pdf"
+    },
+    {
+      "paper_id": "lee_esr1_vmhvl_2014_nature",
+      "title": "Scalable control of mounting and attack by Esr1+ neurons in the ventromedial hypothalamus",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 14,
+      "chunk_count": 14,
+      "word_count": 5440,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/anderson_lab/lee_esr1_vmhvl_2014_nature__scalable_control_of_mounting_and_attack_by_esr1_neurons_in_the_ventromedial_hypothalamus.pdf"
+    },
+    {
+      "paper_id": "hong_social_behavior_2015_pnas",
+      "title": "Automated measurement of mouse social behaviors using depth sensing, video tracking, and machine learning",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 17,
+      "chunk_count": 24,
+      "word_count": 12730,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/anderson_lab/hong_social_behavior_2015_pnas__automated_measurement_of_mouse_social_behaviors_using_depth_sensing_video_tracki.pdf"
+    },
+    {
+      "paper_id": "remedios_social_sex_2017_nature",
+      "title": "Social behaviour shapes hypothalamic neural ensemble representations of conspecific sex",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 21,
+      "chunk_count": 29,
+      "word_count": 14541,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/anderson_lab/remedios_social_sex_2017_nature__social_behaviour_shapes_hypothalamic_neural_ensemble_representations_of_conspeci.pdf"
+    },
+    {
+      "paper_id": "karigo_mounting_2021_nature",
+      "title": "Distinct hypothalamic control of same- and opposite-sex mounting behaviour in mice",
+      "status": "skipped_no_pdf",
+      "chunk_count": 0
+    },
+    {
+      "paper_id": "yang_social_network_2022_nature",
+      "title": "Transformations of neural representations in a social behaviour network",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 37,
+      "chunk_count": 37,
+      "word_count": 11545,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/anderson_lab/yang_social_network_2022_nature__transformations_of_neural_representations_in_a_social_behaviour_network.pdf"
+    },
+    {
+      "paper_id": "line_attractor_aggression_2023_cell",
+      "title": "An approximate line attractor in the hypothalamus encodes an aggressive state",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 32,
+      "chunk_count": 35,
+      "word_count": 16229,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/anderson_lab/line_attractor_aggression_2023_cell__an_approximate_line_attractor_in_the_hypothalamus_encodes_an_aggressive_state.pdf"
+    },
+    {
+      "paper_id": "computational_neuroethology_2019_neuron",
+      "title": "Computational Neuroethology: A Call to Action",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 14,
+      "chunk_count": 25,
+      "word_count": 14961,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/behavior_datasets/computational_neuroethology_2019_neuron__computational_neuroethology_a_call_to_action.pdf"
+    },
+    {
+      "paper_id": "calms21_2021_arxiv",
+      "title": "The Multi-Agent Behavior Dataset: Mouse Dyadic Social Interactions",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 33,
+      "chunk_count": 33,
+      "word_count": 17746,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/behavior_datasets/calms21_2021_arxiv__the_multi_agent_behavior_dataset_mouse_dyadic_social_interactions.pdf"
+    },
+    {
+      "paper_id": "single_trial_movements_2019_nat_neuro",
+      "title": "Single-trial neural dynamics are dominated by richly varied movements",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 17,
+      "chunk_count": 28,
+      "word_count": 18074,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/behavior_neural_dynamics/single_trial_movements_2019_nat_neuro__single_trial_neural_dynamics_are_dominated_by_richly_varied_movements.pdf"
+    },
+    {
+      "paper_id": "cellreg_2017_cell_reports",
+      "title": "Tracking the Same Neurons across Multiple Days in Ca2+ Imaging Data",
+      "status": "skipped_no_pdf",
+      "chunk_count": 0
+    },
+    {
+      "paper_id": "normcorre_2017_jneumeth",
+      "title": "NoRMCorre: An online algorithm for piecewise rigid motion correction of calcium imaging data",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 23,
+      "chunk_count": 23,
+      "word_count": 7175,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/methods/normcorre_2017_jneumeth__normcorre_an_online_algorithm_for_piecewise_rigid_motion_correction_of_calcium_imaging_data.pdf"
+    },
+    {
+      "paper_id": "cnmfe_2018_elife",
+      "title": "Efficient and accurate extraction of in vivo calcium signals from microendoscopic video data",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 37,
+      "chunk_count": 37,
+      "word_count": 20011,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/methods/cnmfe_2018_elife__efficient_and_accurate_extraction_of_in_vivo_calcium_signals_from_microendoscopi.pdf"
+    },
+    {
+      "paper_id": "min1pipe_2018_cell_reports",
+      "title": "MIN1PIPE: A Miniscope 1-Photon-Based Calcium Imaging Signal Extraction Pipeline",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 13,
+      "chunk_count": 17,
+      "word_count": 9825,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/methods/min1pipe_2018_cell_reports__min1pipe_a_miniscope_1_photon_based_calcium_imaging_signal_extraction_pipeline.pdf"
+    },
+    {
+      "paper_id": "caiman_2019_elife",
+      "title": "CaImAn an open source tool for scalable calcium imaging data analysis",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 45,
+      "chunk_count": 45,
+      "word_count": 24762,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/methods/caiman_2019_elife__caiman_an_open_source_tool_for_scalable_calcium_imaging_data_analysis.pdf"
+    },
+    {
+      "paper_id": "deepcad_2021_nat_methods",
+      "title": "Reinforcing neuron extraction and spike inference in calcium imaging using deep self-supervised denoising",
+      "status": "skipped_no_pdf",
+      "chunk_count": 0
+    },
+    {
+      "paper_id": "microendoscopy_review_2021_jneumeth",
+      "title": "Fluorescence microendoscopy for in vivo deep-brain imaging of neuronal circuits",
+      "status": "skipped_no_pdf",
+      "chunk_count": 0
+    },
+    {
+      "paper_id": "minian_2022_elife",
+      "title": "Minian, an open-source miniscope analysis pipeline",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 37,
+      "chunk_count": 38,
+      "word_count": 20181,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/methods/minian_2022_elife__minian_an_open_source_miniscope_analysis_pipeline.pdf"
+    },
+    {
+      "paper_id": "suite2p_2017_biorxiv",
+      "title": "Suite2p: beyond 10,000 neurons with standard two-photon microscopy",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 30,
+      "chunk_count": 30,
+      "word_count": 10612,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/stringer_pachitariu/suite2p_2017_biorxiv__suite2p_beyond_10_000_neurons_with_standard_two_photon_microscopy.pdf"
+    },
+    {
+      "paper_id": "spike_deconv_2018_jneurosci",
+      "title": "Robustness of Spike Deconvolution for Neuronal Calcium Imaging",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 10,
+      "chunk_count": 14,
+      "word_count": 8548,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/stringer_pachitariu/spike_deconv_2018_jneurosci__robustness_of_spike_deconvolution_for_neuronal_calcium_imaging.pdf"
+    },
+    {
+      "paper_id": "calcium_processing_review_2019_conb",
+      "title": "Computational processing of neural recordings from calcium imaging data",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 10,
+      "chunk_count": 12,
+      "word_count": 6538,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/stringer_pachitariu/calcium_processing_review_2019_conb__computational_processing_of_neural_recordings_from_calcium_imaging_data.pdf"
+    },
+    {
+      "paper_id": "high_dim_geometry_2019_nature",
+      "title": "High-dimensional geometry of population responses in visual cortex",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 54,
+      "chunk_count": 54,
+      "word_count": 26915,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/stringer_pachitariu/high_dim_geometry_2019_nature__high_dimensional_geometry_of_population_responses_in_visual_cortex.pdf"
+    },
+    {
+      "paper_id": "spontaneous_behaviors_2019_science",
+      "title": "Spontaneous behaviors drive multidimensional, brain-wide activity",
+      "status": "extracted",
+      "backend": "pypdf",
+      "page_count": 40,
+      "chunk_count": 39,
+      "word_count": 15746,
+      "is_core_neuropilot": false,
+      "pdf_path": "literature/raw/stringer_pachitariu/spontaneous_behaviors_2019_science__spontaneous_behaviors_drive_multidimensional_brain_wide_activity.pdf"
+    },
+    {
+      "paper_id": "cellpose_2021_nat_methods",
+      "title": "Cellpose: a generalist algorithm for cellular segmentation",
+      "status": "skipped_no_pdf",
+      "chunk_count": 0
+    }
+  ]
+}

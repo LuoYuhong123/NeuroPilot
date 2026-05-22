@@ -1,0 +1,154 @@
+# NeuroPilot RAG Notes
+
+This branch adds the local experiment-history RAG layer and the literature corpus preparation/retrieval layer.
+The repository intentionally does not ship the author's local `runs/`, `failed_runs/`, or generated
+`rag_index/experiment_index.json` files. After users run NeuroPilot locally, the RAG layer indexes their
+own run folders and retrieves evidence from those local records.
+
+## What Is Implemented
+
+- M1: build a local experiment index from prior NeuroPilot run folders.
+- M2: inject retrieved prior-run evidence into `LLM_advisor` context before live/mock advisor generation.
+- M3.1: build a normalized literature manifest from `literature/raw` and the existing literature metadata.
+- M3.2: extract PDF text into citation-aware literature chunks for later retrieval.
+- M3.3: query those chunks with local BM25-style lexical retrieval and return citation-aware literature evidence.
+- M3.4: inject retrieved literature evidence into `retrieval_context.literature` for `LLM_advisor`.
+- Reports: regenerated `report.html` files include an "Advisor Evidence And Recommendations" section listing retrieved historical records, retrieved literature, and the initial/default versus advisor/RAG recommendations for each advisor iteration.
+
+The experiment-history implementation uses only Python standard-library modules. Literature text extraction uses an optional PDF backend, currently `pypdf` when available or a system `pdftotext` executable as a fallback. Literature evidence is available to the advisor and to the report evidence section when literature RAG is enabled.
+
+## Inputs Scanned
+
+The indexer scans prior runs under a `runs` root. Complete records are discovered from:
+
+- `manifests/pipeline_manifest.json`
+
+M2.1 also recovers non-standard stack-run folders when they contain the expected output-tree shape:
+
+- `raw_input/`
+- `results_deepcad/`
+- `results_demotion/`
+- `metrics/`
+- `iterations/`
+
+For each discovered run, the indexer reads:
+
+- `final_used_params.json`
+- `metrics/input/*_metrics.json`
+- `iterations/iter_*/metrics/comparison_raw_vs_final.json`
+- `iterations/iter_*/metrics/train_runtime.json`
+- `iterations/iter_*/llm/suggestion_validated.json`
+- `iterations/iter_*/llm/applied_diff.json`
+- `iterations/iter_*/llm/request.json`
+- `report/report_data.json`
+
+Recovered records include a `record_quality` block. `complete_manifest` records are used at full score; `recovered_report` and `partial_iteration_only` records are retained but down-weighted during retrieval.
+
+## Environment Variables
+
+- `NEUROPILOT_RAG_ENABLED`: default `true`
+- `NEUROPILOT_RAG_TOP_K`: default `5`
+- `NEUROPILOT_RAG_RUNS_ROOTS`: optional semicolon-separated list of runs roots
+- `NEUROPILOT_RAG_LITERATURE_ENABLED`: default `true`
+- `NEUROPILOT_RAG_LITERATURE_CHUNKS`: optional path to `literature_chunks.jsonl`; defaults to `literature/index/literature_chunks.jsonl`
+- `NEUROPILOT_RAG_LITERATURE_TOP_K`: default `5`
+- `NEUROPILOT_RAG_LITERATURE_MAX_CHUNKS_PER_PAPER`: default `2`
+
+When `NEUROPILOT_RAG_RUNS_ROOTS` is unset, the code infers the nearest parent folder named `runs` from the current run root.
+
+When the local UI is used, `LLM mode=off` does not use RAG for parameter decisions. Select `apply` and provide
+an API key to let the advisor use retrieved experiment/literature evidence. The RAG flags above still control
+whether retrieval is enabled for advisor calls and report rendering.
+
+## What Is Not Versioned
+
+Do not commit local experiment records or generated experiment summaries:
+
+- `runs/`
+- `failed_runs/`
+- `rag_index/`
+- `tmp_pipeline_metrics/`
+- generated `llm/retrieval_bundle.json` and `llm/experiment_index.json` inside run folders
+
+These paths are local evidence caches. A downloaded copy of the repository will build an experiment-history
+index from the user's own NeuroPilot outputs.
+
+## CLI Index Check
+
+```bash
+python -m rag.experiment_index --runs-root runs --output rag_index/experiment_index.json
+```
+
+## Literature Corpus Build
+
+M3.1/M3.2 build a reusable manifest and chunk index:
+
+```bash
+python -m rag.literature_index \
+  --raw-root literature/raw \
+  --metadata-jsonl literature/manifest/papers.jsonl \
+  --manifest-output literature/manifest/literature_manifest.jsonl \
+  --manifest-summary-output literature/manifest/literature_manifest_summary.json \
+  --chunks-output literature/index/literature_chunks.jsonl \
+  --chunks-summary-output literature/index/literature_chunks_summary.json \
+  --validation-output literature/index/literature_validation.json
+```
+
+Generated files:
+
+- `literature/manifest/literature_manifest.jsonl`: one normalized record per literature item, including metadata-only records.
+- `literature/manifest/literature_manifest_summary.json`: manifest counts by status and source group.
+- `literature/index/literature_chunks.jsonl`: page-aware text chunks with `paper_id`, title, page, tags, citation string, and source path.
+- `literature/index/literature_chunks_summary.json`: extraction status for each document.
+- `literature/index/literature_validation.json`: validation checks for PDF headers, NeuroPilot main/supplement inclusion, extraction failures, and missing chunks.
+
+## Literature Retrieval
+
+M3.3 queries the chunk index without a vector database:
+
+```bash
+python -m rag.literature_index \
+  --skip-build \
+  --query "low SNR deep brain calcium imaging motion correction denoising" \
+  --chunks-input literature/index/literature_chunks.jsonl \
+  --top-k 8 \
+  --max-chunks-per-paper 2 \
+  --retrieval-output literature/index/example_literature_retrieval.json
+```
+
+The result schema is `neuropilot_rag.literature_retrieval.v1` and includes:
+
+- `matched_literature`: ranked chunks with `paper_id`, title, page, citation, score, matched terms, snippet, and PDF path.
+- `score_components`: BM25 lexical score plus small title/tag and NeuroPilot-core boosts.
+- `query`: normalized terms used for retrieval.
+
+Scores are ranking scores, not statistical confidence. They are intended to help the advisor cite the most relevant local evidence.
+
+M3.4 calls `retrieve_literature(...)` from `build_advisor_retrieval_bundle(...)`. The advisor request context now contains:
+
+- `retrieval_context.matched_experiments`: historical experiment evidence.
+- `retrieval_context.literature`: top literature chunks with citation strings, snippets, scores, and matched terms.
+- `retrieval_context.literature_retrieval`: retrieval status, query text, candidate count, and chunks path.
+
+The advisor prompt asks the model to cite relevant run names and literature `citation` fields when those evidence sources influence a recommendation.
+
+To query evidence for one existing run:
+
+```bash
+python -m rag.experiment_index \
+  --query-run-root runs/<your_run>/<dataset>/<sample_hash> \
+  --top-k 5
+```
+
+## Runtime Artifacts
+
+Each advisor iteration can write:
+
+- `llm/retrieval_bundle.json`
+- `llm/experiment_index.json`
+- `llm/retrieval_error.json` when retrieval fails
+
+These files are copied into each per-stack iteration `llm/` directory together with the existing request and suggestion artifacts.
+
+They are useful for auditability in a local run, but they should remain inside ignored run-output folders rather
+than being uploaded as repository fixtures.

@@ -44,13 +44,6 @@ def _write_json(path: Path, payload: dict):
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
-def _read_json(path: Path) -> dict | None:
-    if not path.exists():
-        return None
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
 def _summary_arr(x: np.ndarray | None) -> dict[str, Any]:
     if x is None:
         return {"count": 0, "mean": None, "std": None, "p50": None, "p95": None, "max": None}
@@ -1534,6 +1527,10 @@ def materialize_final_and_run_downstream(
             ]
             segmentation_dir.mkdir(parents=True, exist_ok=True)
             with open(runner_log_path, "w", encoding="utf-8") as log_f:
+                runner_env = dict(os.environ)
+                random_seed = runner_env.get("NEUROPILOT_RANDOM_SEED")
+                if random_seed:
+                    runner_env.setdefault("PYTHONHASHSEED", str(random_seed))
                 proc = subprocess.run(
                     cmd,
                     stdout=log_f,
@@ -1541,6 +1538,7 @@ def materialize_final_and_run_downstream(
                     text=True,
                     check=False,
                     cwd=str(Path(__file__).resolve().parent),
+                    env=runner_env,
                 )
             if proc.returncode != 0:
                 raise RuntimeError(

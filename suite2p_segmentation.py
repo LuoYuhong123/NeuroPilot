@@ -33,6 +33,7 @@ import hashlib
 import importlib
 import inspect
 import pkgutil
+import random
 from pathlib import Path
 from collections import Counter
 import numpy as np
@@ -43,6 +44,15 @@ import tifffile as tiff
 # the dedicated downstream environment used by the public pipeline.
 if os.name == "nt" and not os.environ.get("KMP_DUPLICATE_LIB_OK"):
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+_seed_env = os.environ.get("NEUROPILOT_RANDOM_SEED", "").strip()
+if _seed_env:
+    try:
+        _seed = int(_seed_env)
+        random.seed(_seed)
+        np.random.seed(_seed)
+    except ValueError:
+        pass
 
 try:
     import suite2p

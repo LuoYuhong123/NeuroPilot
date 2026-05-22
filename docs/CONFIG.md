@@ -36,6 +36,16 @@ Instead:
 - if `--llm-mode shadow` or `--llm-mode apply` is used and a real `OPENAI_API_KEY` is available in local `.env`, local `.env.example`, or the shell, the advisor switches to live mode automatically
 - you do not need to set `NEUROPILOT_PIPELINE_LLM_MODE` in `.env` when the CLI already provides `--llm-mode`
 
+## RAG Practical Behavior
+
+- `NEUROPILOT_RAG_ENABLED`: enables local retrieval context; default `true`
+- `NEUROPILOT_RAG_TOP_K`: number of prior experiment records to pass to the advisor; default `5`
+- `NEUROPILOT_RAG_RUNS_ROOTS`: optional semicolon-separated runs roots
+- `NEUROPILOT_RAG_LITERATURE_ENABLED`: enables local literature retrieval; default `true`
+- `NEUROPILOT_RAG_LITERATURE_CHUNKS`: optional path to `literature/index/literature_chunks.jsonl`
+- `NEUROPILOT_RAG_LITERATURE_TOP_K`: number of literature chunks to pass to the advisor; default `5`
+- `NEUROPILOT_RAG_LITERATURE_MAX_CHUNKS_PER_PAPER`: per-paper cap for literature evidence; default `2`
+
 ## Downstream Practical Behavior
 
 - if neither `--cell-data` nor `--non-cell-data` is passed, the published default is `cell-data`
