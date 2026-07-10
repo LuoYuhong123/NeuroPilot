@@ -85,10 +85,10 @@ The main environment assumes an NVIDIA GPU-oriented setup. If `pytorch-cuda=12.1
 
 ## Conda Solve Mentions torchaudio But The YAML Does Not
 
-If `conda env create -f environment-neumar.yml` fails with a solver error that mentions `torchaudio` or another package not present in the environment file, the problem is usually not the repository YAML itself.
+If `conda env create -f environment-neuropilot.yml` fails with a solver error that mentions `torchaudio` or another package not present in the environment file, the problem is usually not the repository YAML itself.
 
 Check the following before editing the repository YAML:
-- confirm the current local `environment-neumar.yml` really is the file you intended to use
+- confirm the current local `environment-neuropilot.yml` really is the file you intended to use
 - search the file itself for `torchaudio`, `torchvision`, `pytorch`, or other stale constraints
 - inspect hidden conda pins and global config
 - clear the solver cache and retry with the classic solver
@@ -96,7 +96,7 @@ Check the following before editing the repository YAML:
 Check with:
 
 ```bash
-grep -nE 'torchaudio|torchvision|pytorch|cuda|python' environment-neumar.yml
+grep -nE 'torchaudio|torchvision|pytorch|cuda|python' environment-neuropilot.yml
 cat "$CONDA_PREFIX/conda-meta/pinned" 2>/dev/null
 conda config --show-sources
 conda config --show create_default_packages
@@ -110,10 +110,10 @@ Then retry with:
 ```bash
 conda clean --index-cache --tarballs --packages -y
 CONDA_SOLVER=classic \
-conda env create -f environment-neumar.yml
+conda env create -f environment-neuropilot.yml
 ```
 
-This repository's `environment-neumar.yml` intentionally installs the main PyTorch wheel through pip and does not require conda-side `torchaudio`.
+This repository's `environment-neuropilot.yml` intentionally installs the main PyTorch wheel through pip and does not require conda-side `torchaudio`.
 
 If Linux solving still looks fragile after the steps above, replace the explicit mirror URLs in the environment file with your preferred `conda-forge` / `pkgs/main` channels and retry.
 
@@ -133,7 +133,7 @@ Then reactivate the environment and retry the import.
 If `torch.cuda.is_available()` is `False` on Linux:
 - confirm the NVIDIA driver is installed and working through `nvidia-smi`
 - verify that the machine's driver is compatible with CUDA 12.x
-- reactivate the `neumar` environment after driver changes
+- reactivate the `neuropilot` environment after driver changes
 - if needed, replace the pip-installed torch wheel with one that matches your local CUDA stack
 
 ## Torch Import Fails With fbgemm.dll On Windows
@@ -150,7 +150,7 @@ Immediate fix for an existing environment:
 copy %CONDA_PREFIX%\\Library\\bin\\libomp.dll %CONDA_PREFIX%\\Library\\bin\\libomp140.x86_64.dll
 ```
 
-The published main entry now tries to create this alias automatically before importing torch-backed modules. Recreating the `neumar` environment from the updated `environment-neumar.yml` is still recommended for a clean setup.
+The published main entry now tries to create this alias automatically before importing torch-backed modules. Recreating the `neuropilot` environment from the updated `environment-neuropilot.yml` is still recommended for a clean setup.
 
 ## Torch Or DeepCAD Import Fails With Duplicate OpenMP On Windows
 
@@ -160,15 +160,15 @@ If the main environment fails while importing `deepcad` or the pipeline entry, w
 
 then the active process is seeing both LLVM OpenMP and Intel OpenMP runtimes.
 
-Immediate fix for an existing `neumar` environment:
+Immediate fix for an existing `neuropilot` environment:
 
 ```bash
-conda env config vars set -n neumar KMP_DUPLICATE_LIB_OK=TRUE
+conda env config vars set -n neuropilot KMP_DUPLICATE_LIB_OK=TRUE
 conda deactivate
-conda activate neumar
+conda activate neuropilot
 ```
 
-The published `environment-neumar.yml` now includes this variable by default for future installs.
+The published `environment-neuropilot.yml` now includes this variable by default for future installs.
 
 ## Output Looks Incomplete
 

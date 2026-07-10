@@ -11,6 +11,14 @@ import random
 import shutil
 import time
 from pathlib import Path
+
+# Published layout: keep this file as the main entry point and load internal
+# support modules from ./core so the repository root stays focused on entries.
+ROOT_DIR = Path(__file__).resolve().parent
+CORE_DIR = ROOT_DIR / "core"
+if CORE_DIR.is_dir() and str(CORE_DIR) not in sys.path:
+    sys.path.insert(0, str(CORE_DIR))
+
 import tifffile as tiff
 
 
@@ -43,7 +51,7 @@ if os.name == "nt" and not os.environ.get("KMP_DUPLICATE_LIB_OK"):
 
 _ensure_windows_torch_openmp_alias()
 
-from NeuMar_function import (
+from neuropilot_function import (
     train_deepcad, train_deepcad_ddp, test_deepcad,
     get_subfolder_names, demotion_PyLoReg
 )
@@ -63,7 +71,6 @@ from report_builder import build_deterministic_report
 # 0) CONFIG
 # =============================================================================
 
-ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_INPUT_DIR = ROOT_DIR / "input_data"
 DEFAULT_RESULTS_PATH = ROOT_DIR / "tmp_pipeline_metrics" / "demo_run"
 
@@ -316,7 +323,7 @@ if data_low_SNR:
     PATCH_XY_TEST, PATCH_T_TEST = 128, 512
 else:
     PATCH_XY, PATCH_T = 128, 128
-    PATCH_XY_TEST, PATCH_T_TEST = 256, 128
+    PATCH_XY_TEST, PATCH_T_TEST = 256, 512
 
 OVERLAP_FACTOR = 0.5
 NUM_WORKERS    = 0
@@ -329,20 +336,23 @@ TRAIN_DATASETS_SIZE = 1000
 SELECT_IMG_NUM      = 100000
 TEST_DATASIZE       = 100000
 TRAIN_MAX_TIFS_FOR_MODEL = max(0, _env_int("NEUROPILOT_TRAIN_MAX_TIFS", 4))
+DEFAULT_EPOCHS_XY = max(1, _env_int("NEUROPILOT_DEFAULT_EPOCHS_XY", 15))
+DEFAULT_EPOCHS_T = max(1, _env_int("NEUROPILOT_DEFAULT_EPOCHS_T", 30))
 
-iter_num = 2  # legacy fixed baseline: iter0 + iter1
+iter_num = max(1, _env_int("NEUROPILOT_ITER_NUM", 2))  # legacy fixed baseline: iter0 + iter1
+FINAL_AFTER_FIRST_MOTION = _env_bool("NEUROPILOT_FINAL_AFTER_FIRST_MOTION", False)
 ADVISOR_CONTROL_ENABLED = _env_bool("NEUROPILOT_ADVISOR_CONTROL_ENABLED", True)
 ADVISOR_MIN_COMPLETED_ITERS = max(1, _env_int("NEUROPILOT_ADVISOR_MIN_COMPLETED_ITERS", 2))
 ADVISOR_MAX_ITERS = max(ADVISOR_MIN_COMPLETED_ITERS, _env_int("NEUROPILOT_ADVISOR_MAX_ITERS", 3))
-ADVISOR_EPOCH_OPTIONS_XY = (15, 30)
-ADVISOR_EPOCH_OPTIONS_T = (30, 45, 60)
+ADVISOR_EPOCH_OPTIONS_XY = (10,15,20,25, 30)
+ADVISOR_EPOCH_OPTIONS_T = (10,15,20,25, 30, 45)
 ADVISOR_PARAM_STAGE = _env_text("NEUROPILOT_ADVISOR_PARAM_STAGE", "low").strip().lower()
 if ADVISOR_PARAM_STAGE not in {"low", "medium"}:
     ADVISOR_PARAM_STAGE = "low"
 ADVISOR_PATCH_SCALE_OPTIONS_LOW = (1.0,)
 ADVISOR_PATCH_SCALE_OPTIONS_MEDIUM = (0.75, 1.0, 1.25)
 ADVISOR_BATCH_OPTIONS_LOW = (TRAIN_BATCH_SIZE_DEFAULT,)
-ADVISOR_BATCH_OPTIONS_MEDIUM = (2, 4, 6, 8)
+ADVISOR_BATCH_OPTIONS_MEDIUM = (2, 4, 8, 16, 32)
 ADVISOR_OPTIMIZATION_PRIORITIES = (
     "balanced",
     "snr_priority",
@@ -486,7 +496,7 @@ def get_patch_used(sample_mode: str):
 
 def get_default_iter_params(iter_index: int) -> dict:
     sample_mode = "XY" if int(iter_index) == 0 else "T"
-    n_epochs = 15 if int(iter_index) == 0 else 30
+    n_epochs = DEFAULT_EPOCHS_XY if int(iter_index) == 0 else DEFAULT_EPOCHS_T
     patch_x, patch_y, patch_t = get_patch_used(sample_mode)
     return {
         "sample_mode": sample_mode,
@@ -1513,6 +1523,8 @@ def init_stack_state(
         "iterations_root": iterations_root,
         "current_input_dir": raw_input_dir,
         "last_iter_denoise_tif_path": None,
+        "final_stack_source_path": None,
+        "final_source_semantic": None,
         "raw_metrics": raw_metrics,
         "pipeline_manifest": pipeline_manifest,
         "final_used_params": final_used_params,
@@ -1577,6 +1589,7 @@ def run_one_folder(folder_name: str) -> None:
     next_iter_overrides = {}
 
     for iiii in range(run_iter_limit):
+        stop_after_this_iter = False
         selected_stage_tifs = [
             get_single_tif_path_strict(state["current_input_dir"])
             for state in states
@@ -1796,6 +1809,11 @@ def run_one_folder(folder_name: str) -> None:
                 raw_vs_current_comparison = raw_vs_motion
                 state["current_input_dir"] = demotion_output_path
 
+                if FINAL_AFTER_FIRST_MOTION and iiii == 0:
+                    state["final_stack_source_path"] = motion_tif_path
+                    state["final_source_semantic"] = "iter0_motion_corrected_output"
+                    stop_after_this_iter = True
+
             if iiii == run_iter_limit - 1:
                 raw_vs_final = compare_two_metrics(state["raw_metrics"], current_stage_metrics)
                 write_json(iter_metrics_dir / "comparison_raw_vs_final.json", raw_vs_final)
@@ -1855,11 +1873,12 @@ def run_one_folder(folder_name: str) -> None:
                 "enabled": bool(RAG_ENABLED),
                 "top_k": int(RAG_TOP_K),
                 "runs_roots_env": RAG_RUNS_ROOTS_RAW or None,
-                "literature_enabled": bool(RAG_LITERATURE_ENABLED),
+                "literature_enabled_for_parameter_advisor": False,
+                "literature_enabled_for_report_interpretation": bool(RAG_LITERATURE_ENABLED),
                 "literature_top_k": int(RAG_LITERATURE_TOP_K),
                 "literature_max_chunks_per_paper": int(RAG_LITERATURE_MAX_CHUNKS_PER_PAPER),
                 "literature_chunks": RAG_LITERATURE_CHUNKS or None,
-                "retrieval_scope": "local historical NeuroPilot runs + local literature chunks",
+                "retrieval_scope": "local historical NeuroPilot runs for parameter advice",
             },
         }
         write_json(shared_llm_dir / "mode.json", llm_mode_payload)
@@ -1914,7 +1933,7 @@ def run_one_folder(folder_name: str) -> None:
                     current_run_root=control_state["run_root"],
                     top_k=RAG_TOP_K,
                     index_output_path=shared_llm_dir / "experiment_index.json",
-                    literature_enabled=RAG_LITERATURE_ENABLED,
+                    literature_enabled=False,
                     literature_chunks_path=RAG_LITERATURE_CHUNKS or None,
                     literature_top_k=RAG_LITERATURE_TOP_K,
                     literature_max_chunks_per_paper=RAG_LITERATURE_MAX_CHUNKS_PER_PAPER,
@@ -1924,8 +1943,8 @@ def run_one_folder(folder_name: str) -> None:
                 print(
                     f"[RAG] iter={iiii} matched "
                     f"{len(retrieval_bundle.get('matched_experiments', []))}/"
-                    f"{retrieval_bundle.get('candidate_count', 0)} historical experiments; "
-                    f"{len(retrieval_bundle.get('literature', []))} literature chunks"
+                    f"{retrieval_bundle.get('candidate_count', 0)} historical experiments "
+                    "for parameter advice"
                 )
             except Exception as exc:
                 retrieval_error = {
@@ -2113,19 +2132,24 @@ def run_one_folder(folder_name: str) -> None:
 
         if iteration_control_decision["stop_after_current_iter"]:
             break
+        if stop_after_this_iter:
+            print("[ITER-CONTROL] stopping after iter=0 motion correction; second denoise training disabled by NEUROPILOT_FINAL_AFTER_FIRST_MOTION")
+            break
 
     for state in states:
-        if state["last_iter_denoise_tif_path"] is None:
+        final_stack_source_path = state.get("final_stack_source_path") or state["last_iter_denoise_tif_path"]
+        final_source_semantic = state.get("final_source_semantic") or "last_iter_denoised_output"
+        if final_stack_source_path is None:
             raise RuntimeError(f"No final denoise tif found for {state['raw_tif_name']} to materialize final stack.")
 
         run_root = Path(state["run_root"])
         downstream_result = materialize_final_and_run_downstream(
             raw_stack_path=state["raw_tif_path"],
-            final_stack_source_path=state["last_iter_denoise_tif_path"],
+            final_stack_source_path=final_stack_source_path,
             output_root=run_root,
             dataset_profile=DATASET_PROFILE,
             downstream_config=DOWNSTREAM_CONFIG,
-            final_source_semantic="last_iter_denoised_output",
+            final_source_semantic=final_source_semantic,
         )
         state["pipeline_manifest"]["downstream"] = {
             "is_cell_data": bool(IS_CELL_DATA),
@@ -2172,6 +2196,8 @@ def run_one_folder(folder_name: str) -> None:
             "report_html": report_result.get("report_html"),
             "report_print_html": report_result.get("report_print_html"),
             "report_pdf": report_result.get("report_pdf"),
+            "literature_interpretation_context_json": report_result.get("literature_interpretation_context_json"),
+            "literature_grounded_summary_json": report_result.get("literature_grounded_summary_json"),
             "overview_page1_png": report_result.get("overview_page1_png"),
             "overview_page2_png": report_result.get("overview_page2_png"),
             "config": {
@@ -2185,6 +2211,7 @@ def run_one_folder(folder_name: str) -> None:
                 "report_crop_scale_factor": REPORT_CROP_SCALE_FACTOR,
                 "report_kymograph_line_count": REPORT_KYMOGRAPH_LINE_COUNT,
                 "report_use_intermediate_sections": REPORT_USE_INTERMEDIATE_SECTIONS,
+                "literature_interpretation_mode": "default_enabled",
             },
         }
         write_json(state["manifests_dir"] / "pipeline_manifest.json", state["pipeline_manifest"])
@@ -2289,4 +2316,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

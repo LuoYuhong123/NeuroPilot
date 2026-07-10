@@ -6,7 +6,7 @@ The public snapshot is designed around a conda-based workflow.
 
 Recommended assumptions:
 - Python 3.10
-- an NVIDIA GPU for the main `neumar` environment
+- an NVIDIA GPU for the main `neuropilot` environment
 - a separate downstream environment for cell-style analysis when `--cell-data` is used
 
 Supported installation targets:
@@ -27,21 +27,21 @@ If your Linux machine does not use `apt`, install the equivalent packages throug
 ## Main Environment
 
 ```bash
-conda env create -f environment-neumar.yml
-conda activate neumar
+conda env create -f environment-neuropilot.yml
+conda activate neuropilot
 ```
 
 This environment file is tuned for mirrored conda channels plus a pip-installed CUDA 12.1 PyTorch wheel, which helps avoid the flaky `nvidia` conda channel on some Windows setups.
 
 Important solver note:
-- `environment-neumar.yml` does not request conda-side `torchaudio`
+- `environment-neuropilot.yml` does not request conda-side `torchaudio`
 - if the solver reports `torchaudio` or another package that is absent from the environment file, check the current local YAML copy first
 - other common causes include hidden conda pins, injected defaults, stale solver caches, or a `libmamba`-specific solve issue
 
 Check with:
 
 ```bash
-grep -nE 'torchaudio|torchvision|pytorch|cuda|python' environment-neumar.yml
+grep -nE 'torchaudio|torchvision|pytorch|cuda|python' environment-neuropilot.yml
 cat "$CONDA_PREFIX/conda-meta/pinned" 2>/dev/null
 conda config --show-sources
 conda config --show create_default_packages
@@ -52,11 +52,11 @@ Then clear the cache and retry with the classic solver:
 
 ```bash
 conda clean --index-cache --tarballs --packages -y
-CONDA_SOLVER=classic conda env create -f environment-neumar.yml
+CONDA_SOLVER=classic conda env create -f environment-neuropilot.yml
 ```
 
 Linux notes:
-- the same `environment-neumar.yml` file is intended to work on Linux
+- the same `environment-neuropilot.yml` file is intended to work on Linux
 - if you are outside the default mirror region, replace the explicit mirror URLs with your preferred `conda-forge` / `pkgs/main` channels before creating the environment
 - the published environment files intentionally omit the Windows-only `pkgs/msys2` channel
 - after activation, a quick sanity check is:
@@ -96,7 +96,7 @@ The published examples use the environment name `suite2p`, but the name is not f
 python neuropilot_pipeline.py --downstream-env your_env_name ...
 ```
 
-Even for the full two-environment workflow, the user-facing main command is still launched from `neumar`. The main entry switches to the downstream interpreter only for the cell-data downstream stage.
+Even for the full two-environment workflow, the user-facing main command is still launched from `neuropilot`. The main entry switches to the downstream interpreter only for the cell-data downstream stage.
 
 If automatic environment switching is not enough on your machine, point the pipeline to an explicit interpreter:
 
@@ -127,7 +127,7 @@ When `--llm-mode shadow` or `--llm-mode apply` is passed on the command line, a 
 
 The command-line flag `--GPU` overrides the default GPU selection from `.env`.
 
-If you run with `--non-cell-data`, the pipeline stays inside `neumar` and does not require the second downstream environment to be installed.
+If you run with `--non-cell-data`, the pipeline stays inside `neuropilot` and does not require the second downstream environment to be installed.
 
 ## Report Output
 

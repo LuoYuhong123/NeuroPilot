@@ -41,14 +41,18 @@ Instead:
 - `NEUROPILOT_RAG_ENABLED`: enables local retrieval context; default `true`
 - `NEUROPILOT_RAG_TOP_K`: number of prior experiment records to pass to the advisor; default `5`
 - `NEUROPILOT_RAG_RUNS_ROOTS`: optional semicolon-separated runs roots
-- `NEUROPILOT_RAG_LITERATURE_ENABLED`: enables local literature retrieval; default `true`
+- `NEUROPILOT_RAG_LITERATURE_ENABLED`: enables local literature retrieval for report interpretation; default `true`
 - `NEUROPILOT_RAG_LITERATURE_CHUNKS`: optional path to `literature/index/literature_chunks.jsonl`
-- `NEUROPILOT_RAG_LITERATURE_TOP_K`: number of literature chunks to pass to the advisor; default `5`
+- `NEUROPILOT_RAG_LITERATURE_TOP_K`: number of literature chunks to retrieve for report interpretation; default `5`
 - `NEUROPILOT_RAG_LITERATURE_MAX_CHUNKS_PER_PAPER`: per-paper cap for literature evidence; default `2`
+- Report literature interpretation is a default report feature. The report writes deterministic context, literature retrieval, and grounded summary JSON files under `report/interpretation/`.
+- `NEUROPILOT_REPORT_INTERPRETATION_LLM_BACKEND`: `fallback` or `live`; default `fallback`. Set to `live` to use the configured OpenAI-compatible chat endpoint for the report interpretation text.
+
+Parameter advice uses historical experiment records only. Literature chunks are reserved for report-side quality and activity-readout interpretation.
 
 ## Downstream Practical Behavior
 
 - if neither `--cell-data` nor `--non-cell-data` is passed, the published default is `cell-data`
-- full cell-data processing expects two environments, but the main command is still launched from `neumar`
+- full cell-data processing expects two environments, but the main command is still launched from `neuropilot`
 - `--downstream-env` only matters for `--cell-data`
 - if `--non-cell-data` is used, the pipeline skips the downstream cell-analysis stage and does not require the second environment

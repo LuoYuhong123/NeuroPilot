@@ -537,7 +537,7 @@ class training_class:
             self.local_model.load_state_dict(state)
             if _is_main_process():
                 print(f"\033[1;31m{'!' * 60}\033[0m")
-                print(f"\033[1;31m!!!   🚨 MODEL LOADED: {self.pretrained_pth} 🚨   !!!\033[0m")
+                print(f"\033[1;31m[MODEL LOADED] {self.pretrained_pth}\033[0m")
                 print(f"\033[1;31m{'!' * 60}\033[0m")
 
         # Wrap with DDP if multi-GPU
@@ -562,8 +562,8 @@ class training_class:
         tif_files = _resolve_training_tif_files(self.datasets_path)
 
         if _is_main_process() and (not self._preprocess_logged):
-            print(f"\033[1;31m🚨🚨🚨 PATH: {self.datasets_path} 🚨🚨🚨\033[0m")
-            print(f"\033[1;31m🚨🚨🚨 FILES: {tif_files} 🚨🚨🚨\033[0m")
+            print(f"\033[1;31m[PATH] {self.datasets_path}\033[0m")
+            print(f"\033[1;31m[FILES] {tif_files}\033[0m")
             self._preprocess_logged = True
 
         valid, meta = [], {}
@@ -786,7 +786,7 @@ class training_class:
                         print(
                             '\r\033[2K'
                             '\033[92m'
-                            '[🚀 Denoise TRAIN][DDP] [Epoch %d/%d] [Batch %d/%d] '
+                            '[Denoise TRAIN][DDP] [Epoch %d/%d] [Batch %d/%d] '
                             '[Total loss: %.4f] [ETA: %s] [Time cost: %s]'
                             '\033[0m'
                             % (

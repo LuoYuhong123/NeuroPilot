@@ -14,10 +14,17 @@ import re
 import shutil
 import string
 import subprocess
+import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
+
+# Published layout compatibility: root entry scripts live beside ./core.
+ROOT_DIR = Path(__file__).resolve().parent
+CORE_DIR = ROOT_DIR / "core"
+if CORE_DIR.is_dir() and str(CORE_DIR) not in sys.path:
+    sys.path.insert(0, str(CORE_DIR))
 
 import matplotlib
 
@@ -29,6 +36,15 @@ from matplotlib.patches import Rectangle
 import numpy as np
 import tifffile as tiff
 from input_metrics import estimate_raw_motion_rigid, load_tif_anyshape
+
+try:
+    from report_interpretation import (
+        build_literature_grounded_summary,
+        build_literature_interpretation_context,
+    )
+except Exception:
+    build_literature_grounded_summary = None
+    build_literature_interpretation_context = None
 
 try:
     from rag.experiment_index import (
@@ -52,6 +68,10 @@ REPORT_DISPLAY_TOP_PERCENT = 0.60
 REPORT_SEGMENTATION_MIN_DISPLAY_COUNT = 10
 REPORT_SEGMENTATION_SHOW_ALL_BELOW = 10
 REPORT_TRACE_MIN_DISPLAY_COUNT = 5
+REPORT_ACTIVITY_DESCRIPTIVE_MIN_FRAMES = 100
+REPORT_ACTIVITY_PCA_MIN_ROI = 30
+REPORT_ACTIVITY_PCA_MIN_FRAMES = 300
+REPORT_ACTIVITY_PCA_MIN_FRAMES_PER_ROI = 5
 REPORT_CROP_SCALE_FACTOR = 0.55
 DEFAULT_IMAGING_MODALITY = "2p"
 DEFAULT_PIXEL_SIZE_UM = 0.645
@@ -171,6 +191,13 @@ def _safe_float(x: Any) -> float | None:
     if np.isnan(value) or np.isinf(value):
         return None
     return value
+
+
+def _safe_int(x: Any) -> int | None:
+    value = _safe_float(x)
+    if value is None:
+        return None
+    return int(value)
 
 
 def _summary_array(x: np.ndarray | None) -> dict[str, Any]:
@@ -1395,10 +1422,9 @@ def save_kymograph_bundle_png(
 
     def _add_kymo_scalebar(ax, kymo_shape: Sequence[int]):
         kh, kw = int(kymo_shape[0]), int(kymo_shape[1])
-        margin_x = max(38, int(round(kw * 0.07)))
-        margin_y = max(9, int(round(kh * 0.11)))
-        text_gap = int(REPORT_KYMO_SCALEBAR_TEXT_GAP_PX)
-        vertical_text_gap = max(12, int(round(float(text_gap) * float(kw) / max(1.0, 2.0 * float(kh)))))
+        margin_x = max(12, int(round(kw * 0.035)))
+        margin_y = max(14, int(round(kh * 0.12)))
+        text_gap = float(REPORT_KYMO_SCALEBAR_TEXT_GAP_PX)
         spatial_px = _choose_scalebar_px((kh, kh))
         if fps_hz > 0:
             seconds_target = 5.0 if kw / fps_hz >= 5.0 else max(1.0, round((kw / fps_hz) * 0.2, 1))
@@ -1411,6 +1437,9 @@ def save_kymograph_bundle_png(
         x_left = max(2, x_corner - time_frames)
         y_corner = margin_y
         y_top = min(kh - 2, y_corner + spatial_px)
+        if y_top >= kh - 2:
+            y_corner = max(2, kh - 2 - spatial_px)
+            y_top = min(kh - 2, y_corner + spatial_px)
         ax.plot([x_left, x_corner], [y_corner, y_corner], color="white", linewidth=2.0, solid_capstyle="butt")
         ax.plot([x_corner, x_corner], [y_corner, y_top], color="white", linewidth=2.0, solid_capstyle="butt")
         time_label = f"{time_frames / fps_hz:.0f} s" if fps_hz > 0 else f"{time_frames} fr"
@@ -1426,13 +1455,14 @@ def save_kymograph_bundle_png(
             bbox={"facecolor": (0, 0, 0, 0.35), "edgecolor": "none", "pad": 1.0},
         )
         ax.text(
-            x_corner + vertical_text_gap,
+            x_corner + text_gap,
             (y_corner + y_top) / 2.0,
             spatial_label,
             color="white",
-            ha="left",
-            va="center",
+            ha="center",
+            va="bottom",
             rotation=90,
+            rotation_mode="anchor",
             fontsize=REPORT_KYMO_SCALEBAR_FONT_SIZE,
             bbox={"facecolor": (0, 0, 0, 0.35), "edgecolor": "none", "pad": 1.0},
         )
@@ -2420,6 +2450,104 @@ def _generate_paired_trace_assets(
 
     return result
 
+
+def _shape_pair(value: Any) -> tuple[int | None, int | None]:
+    if not isinstance(value, (list, tuple)) or len(value) < 2:
+        return None, None
+    return _safe_int(value[0]), _safe_int(value[1])
+
+
+def _activity_analysis_gate(
+    paired_assets: dict[str, Any],
+    *,
+    include_downstream_section: bool,
+    is_cell_data: bool | None,
+) -> dict[str, Any]:
+    summary = paired_assets.get("summary") if isinstance(paired_assets.get("summary"), dict) else {}
+    roi_count, frame_count = _shape_pair(summary.get("all_analysis_final_trace_shape"))
+    if roi_count is None or frame_count is None:
+        roi_count, frame_count = _shape_pair(summary.get("all_selected_final_trace_shape"))
+    if roi_count is None:
+        roi_count = _safe_int(summary.get("all_analysis_count"))
+    if roi_count is None:
+        roi_count = _safe_int(summary.get("all_selected_count"))
+    if roi_count is None:
+        roi_count = _safe_int(paired_assets.get("all_selected_count"))
+    if frame_count is None:
+        _, frame_count = _shape_pair(summary.get("final_trace_shape"))
+
+    roi_count = int(roi_count or 0)
+    frame_count = int(frame_count or 0)
+    trace_available = bool(summary) and roi_count > 0 and frame_count > 0
+    pca_frame_threshold = max(
+        int(REPORT_ACTIVITY_PCA_MIN_FRAMES),
+        int(REPORT_ACTIVITY_PCA_MIN_FRAMES_PER_ROI) * max(roi_count, 1),
+    )
+
+    if not include_downstream_section or is_cell_data is False:
+        level = "image_quality_only"
+        label = "Image quality summary"
+        planned_outputs = ["image_quality_improvement"]
+    elif roi_count < 10 or not trace_available:
+        level = "roi_trace_readout"
+        label = "ROI and trace readout"
+        planned_outputs = ["image_quality_improvement", "roi_count_summary", "representative_trace_summary"]
+    elif frame_count < REPORT_ACTIVITY_DESCRIPTIVE_MIN_FRAMES:
+        level = "roi_trace_readout"
+        label = "ROI and trace readout"
+        planned_outputs = ["image_quality_improvement", "roi_count_summary", "representative_trace_summary"]
+    elif roi_count < REPORT_ACTIVITY_PCA_MIN_ROI:
+        level = "descriptive_population_summary"
+        label = "Descriptive trace and correlation summary"
+        planned_outputs = [
+            "trace_summary",
+            "roi_activity_summary",
+            "activity_proxy_summary",
+            "pairwise_correlation_summary",
+        ]
+    elif frame_count >= pca_frame_threshold:
+        level = "pca_exploratory_population_structure"
+        label = "Exploratory PCA population structure"
+        planned_outputs = [
+            "trace_summary",
+            "roi_activity_summary",
+            "activity_proxy_summary",
+            "pairwise_correlation_summary",
+            "pca_explained_variance",
+            "pc1_pc2_trajectory",
+        ]
+    else:
+        level = "descriptive_population_summary"
+        label = "Descriptive trace and correlation summary"
+        planned_outputs = [
+            "trace_summary",
+            "roi_activity_summary",
+            "activity_proxy_summary",
+            "pairwise_correlation_summary",
+        ]
+
+    return {
+        "schema_version": "neuropilot.report_activity_analysis_gate.v1",
+        "roi_count": int(roi_count),
+        "frame_count": int(frame_count),
+        "trace_available": bool(trace_available),
+        "selected_level": level,
+        "selected_label": label,
+        "planned_outputs": planned_outputs,
+        "thresholds": {
+            "roi_trace_readout_max_roi_exclusive": 10,
+            "descriptive_min_frames": int(REPORT_ACTIVITY_DESCRIPTIVE_MIN_FRAMES),
+            "pca_min_roi": int(REPORT_ACTIVITY_PCA_MIN_ROI),
+            "pca_min_frames_base": int(REPORT_ACTIVITY_PCA_MIN_FRAMES),
+            "pca_min_frames_per_roi": int(REPORT_ACTIVITY_PCA_MIN_FRAMES_PER_ROI),
+            "pca_frame_threshold_used": int(pca_frame_threshold),
+        },
+        "policy": {
+            "metric_selection": "deterministic_roi_and_frame_count_gate",
+        },
+    }
+
+
 def _save_motion_curve_png(
     raw_shifts_npy: str | Path | None,
     target_shifts_npy: str | Path | None,
@@ -2520,13 +2648,34 @@ def _env_bool_report(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off", ""}
 
 
+def _env_text_report(name: str, default: str) -> str:
+    raw = os.getenv(name)
+    return str(default if raw is None else raw).strip()
+
+
+def _retrieval_bundle_without_literature(bundle: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(bundle, dict):
+        return None
+    cleaned = dict(bundle)
+    cleaned.pop("literature", None)
+    cleaned.pop("literature_retrieval", None)
+    if str(cleaned.get("retrieval_mode") or "").endswith("+local_literature_bm25"):
+        cleaned["retrieval_mode"] = "local_experiment_history"
+    notes = cleaned.get("notes")
+    cleaned["notes"] = [
+        *(notes if isinstance(notes, list) else []),
+        "Literature evidence is excluded from advisor evidence and reserved for report interpretation.",
+    ]
+    return cleaned
+
+
 def _latest_existing_retrieval_bundle(run_root: Path) -> dict[str, Any] | None:
     candidates = sorted((run_root / "iterations").glob("iter_*/llm/retrieval_bundle.json"))
     shared_candidates = sorted(run_root.parent.glob("_shared/iterations/iter_*/llm/retrieval_bundle.json"))
     for path in reversed(candidates + shared_candidates):
         data = _read_json(path)
         if isinstance(data, dict) and data.get("schema_version"):
-            return data
+            return _retrieval_bundle_without_literature(data)
     return None
 
 
@@ -2545,13 +2694,15 @@ def _build_report_retrieval_bundle(run_root: Path) -> dict[str, Any] | None:
                 return existing
         context = build_context_from_run_root(run_root)
         roots = parse_runs_roots(os.getenv("NEUROPILOT_RAG_RUNS_ROOTS"), current_run_root=run_root)
-        return build_advisor_retrieval_bundle(
+        bundle = build_advisor_retrieval_bundle(
             context,
             runs_roots=roots,
             current_run_root=run_root,
             top_k=top_k,
             index_output_path=run_root / "report" / "advisor_experiment_index.json",
+            literature_enabled=False,
         )
+        return _retrieval_bundle_without_literature(bundle)
     except Exception as exc:
         return {
             "schema_version": "neuropilot_rag.retrieval_error.v1",
@@ -2629,7 +2780,7 @@ def _advisor_decision_metrics(run_root: Path) -> list[dict[str, Any]]:
         if retrieval:
             retrieval_text = (
                 f"records={len(retrieval.get('matched_experiments', []) or [])}, "
-                f"literature={len(retrieval.get('literature', []) or [])}"
+                "literature=excluded"
             )
         suggestion_params = {
             "sample_mode": default_params.get("sample_mode"),
@@ -2669,25 +2820,16 @@ def _advisor_decision_metrics(run_root: Path) -> list[dict[str, Any]]:
 def _advisor_evidence_section(retrieval_bundle: dict[str, Any] | None, run_root: Path | None = None) -> dict[str, Any] | None:
     if not retrieval_bundle:
         return None
+    retrieval_bundle = _retrieval_bundle_without_literature(retrieval_bundle) or retrieval_bundle
     matches = retrieval_bundle.get("matched_experiments", [])
     if not isinstance(matches, list):
         matches = []
-    literature = retrieval_bundle.get("literature", [])
-    if not isinstance(literature, list):
-        literature = []
-    literature_state = (
-        retrieval_bundle.get("literature_retrieval", {})
-        if isinstance(retrieval_bundle.get("literature_retrieval"), dict)
-        else {}
-    )
     mini_metrics = [
         _kv("retrieval mode", retrieval_bundle.get("retrieval_mode", "local_experiment_history")),
         _kv("candidate records scanned", retrieval_bundle.get("candidate_count", 0)),
         _kv("current run excluded", retrieval_bundle.get("excluded_current_run_count", 0)),
         _kv("matched records shown", len(matches)),
-        _kv("literature status", literature_state.get("status", "not_available")),
-        _kv("literature candidate chunks", literature_state.get("candidate_count", 0)),
-        _kv("literature chunks shown", len(literature)),
+        _kv("literature policy", "excluded from parameter advice"),
     ]
     if run_root is not None:
         mini_metrics.extend(_advisor_decision_metrics(run_root))
@@ -2709,42 +2851,51 @@ def _advisor_evidence_section(retrieval_bundle: dict[str, Any] | None, run_root:
             f"run_root={match.get('run_root')}"
         )
         mini_metrics.append({"label": _short_run_label(match), "value": value, "max_chars": 220})
-    for idx, item in enumerate(literature[:5], start=1):
-        if not isinstance(item, dict):
-            continue
-        terms = item.get("matched_terms", []) if isinstance(item.get("matched_terms"), list) else []
-        value = (
-            f"score={_fmt(item.get('score'))}; "
-            f"citation={item.get('citation')}; "
-            f"terms={', '.join(str(term) for term in terms[:8])}; "
-            f"snippet={_truncate_middle(item.get('snippet'), max_chars=220)}"
-        )
-        mini_metrics.append({"label": f"#L{idx} {item.get('paper_id', 'unknown-paper')}", "value": value, "max_chars": 220})
-    if matches or literature:
+    if matches:
         record_list = "; ".join(_short_run_label(match) for match in matches if isinstance(match, dict))
-        literature_list = "; ".join(
-            str(item.get("citation") or item.get("paper_id"))
-            for item in literature
-            if isinstance(item, dict)
-        )
         caption = (
-            "Advisor evidence lists the historical experiment records, literature chunks, and per-iteration "
-            "initial/default versus advisor/RAG recommendations used by the local RAG layer. "
-            f"Retrieved records: {record_list or 'none'}. Retrieved literature: {literature_list or 'none'}."
+            "Advisor evidence lists historical experiment records and per-iteration initial/default versus "
+            "advisor/RAG recommendations used by the local parameter-advice layer. "
+            f"Retrieved records: {record_list or 'none'}. Literature chunks are reserved for report interpretation."
         )
     else:
         caption = (
-            "Advisor evidence was requested, but no prior experiment or literature chunk matched the current run."
+            "Advisor evidence was requested, but no prior experiment record matched the current run."
         )
     if retrieval_bundle.get("error"):
         caption = f"Advisor evidence retrieval failed: {retrieval_bundle.get('error_type')}: {retrieval_bundle.get('error')}"
     return {
         "key": "advisor_evidence",
-        "title_body": "Advisor Evidence And Recommendations",
+        "title_body": "Historical Parameter Evidence And Recommendations",
         "panel_groups": [],
         "metric_style": "metric-compact",
         "mini_metrics": mini_metrics,
         "caption": caption,
+    }
+
+
+def _literature_interpretation_section(
+    summary: dict[str, Any] | None,
+    context: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(summary, dict) or summary.get("status") != "generated":
+        return None
+    commentary = summary.get("commentary", {}) if isinstance(summary.get("commentary"), dict) else {}
+    summary_text = str(commentary.get("summary_text") or "").strip()
+    if not summary_text:
+        return None
+    chunk_ids = summary.get("applied_literature_chunks", [])
+    if not isinstance(chunk_ids, list):
+        chunk_ids = []
+    chunk_ids = [str(item).strip() for item in chunk_ids if str(item).strip()]
+    return {
+        "key": "literature_interpretation",
+        "title_body": "Literature-Grounded Data Quality and Activity Feature Summary",
+        "panel_groups": [],
+        "metric_style": "metric-compact",
+        "mini_metrics": [],
+        "caption": summary_text,
+        "applied_literature_chunks": chunk_ids,
     }
 
 
@@ -2857,7 +3008,18 @@ def _render_section_html(section: dict[str, Any], report_dir: Path, embed_assets
     metric_style = str(section.get("metric_style") or "").strip()
     metrics_html = _render_kv_grid(section.get("mini_metrics", []), extra_class=metric_style) if section.get("mini_metrics") else ''
     caption_html = f'<div class="section-caption">{html.escape(str(section.get("caption", "")))}</div>' if section.get("caption") else ''
-    return f'<section class="report-section"><div class="section-header"><div class="section-kicker">{html.escape(str(section.get("kicker", "Figure section")))}</div><h2>{html.escape(str(section.get("title", "Section")))}</h2></div>{"".join(groups_html)}{metrics_html}{caption_html}</section>'
+    chunk_ids = section.get("applied_literature_chunks", [])
+    chunk_html = ""
+    if isinstance(chunk_ids, list) and chunk_ids:
+        items = "".join(f"<li>{html.escape(str(chunk_id))}</li>" for chunk_id in chunk_ids if str(chunk_id).strip())
+        if items:
+            chunk_html = (
+                '<div class="literature-chunks">'
+                '<div class="literature-chunks-title">Applied literature chunks</div>'
+                f'<ul>{items}</ul>'
+                '</div>'
+            )
+    return f'<section class="report-section"><div class="section-header"><div class="section-kicker">{html.escape(str(section.get("kicker", "Figure section")))}</div><h2>{html.escape(str(section.get("title", "Section")))}</h2></div>{"".join(groups_html)}{metrics_html}{caption_html}{chunk_html}</section>'
 
 
 def _render_report_html(report_data: dict[str, Any], report_dir: Path, print_mode: bool = False) -> str:
@@ -2914,6 +3076,10 @@ def _render_report_html(report_data: dict[str, Any], report_dir: Path, print_mod
     .panel-title {{ min-width:0; font-size:13px; font-weight:700; line-height:1.25; }}
     .panel-note,.panel-source {{ font-family:{REPORT_FONT_CSS}; font-size:11px; color:var(--muted); margin-top:3px; line-height:1.35; }}
     .section-caption {{ margin-top:10px; font-size:12.5px; line-height:1.45; color:#1b1b1b; font-family:{REPORT_FONT_CSS}; }}
+    .literature-chunks {{ margin-top:10px; font-size:11.5px; line-height:1.35; color:var(--muted); font-family:{REPORT_FONT_CSS}; }}
+    .literature-chunks-title {{ margin-bottom:4px; text-transform:uppercase; letter-spacing:0.04em; font-size:10.5px; color:var(--muted); }}
+    .literature-chunks ul {{ margin:0; padding-left:18px; columns:2; column-gap:22px; }}
+    .literature-chunks li {{ break-inside:avoid; padding-bottom:2px; }}
     details.provenance-block {{ margin-top:10px; border:1px solid var(--border); padding:8px 10px; }}
     details.provenance-block summary {{ cursor:pointer; font-weight:700; }}
     .print-mode .report {{ width:100%; padding:7mm 6mm 9mm; }}
@@ -3038,6 +3204,7 @@ def build_deterministic_report(
     display_name_final = str(display_name_final or DISPLAY_FINAL_NAME)
     report_generate_pdf = bool(report_generate_pdf and try_pdf)
     report_kymograph_line_count = max(1, int(report_kymograph_line_count))
+    literature_interpretation_enabled = True
 
     manifest = _read_json(run_root / "manifests" / "pipeline_manifest.json") or {}
     final_used_params = _read_json(run_root / "final_used_params.json") or {}
@@ -3193,11 +3360,9 @@ def build_deterministic_report(
     include_downstream_section = True
     downstream_section_omitted_reason = None
     if is_cell_data is False:
-        include_downstream_section = False
-        downstream_section_omitted_reason = "non_cell_data"
+        downstream_section_omitted_reason = "non_cell_data_placeholder"
     elif cell_downstream_enabled is False:
-        include_downstream_section = False
-        downstream_section_omitted_reason = "downstream_disabled"
+        downstream_section_omitted_reason = "downstream_disabled_placeholder"
 
     actual_pixel_size = _safe_float(raw_metrics.get("data_summary", {}).get("pixel_size_um"))
     pixel_size_used = float(actual_pixel_size) if actual_pixel_size is not None else float(pixel_size_um)
@@ -3490,6 +3655,48 @@ def build_deterministic_report(
         "final_trace_heatmap_png": paired_assets.get("final_trace_heatmap_png"),
         "corr_curve_csv": str(corr_curve_csv),
     }
+    activity_analysis_gate = _activity_analysis_gate(
+        paired_assets,
+        include_downstream_section=bool(include_downstream_section),
+        is_cell_data=is_cell_data,
+    )
+    literature_interpretation_context = None
+    literature_grounded_summary = None
+    if literature_interpretation_enabled:
+        if build_literature_interpretation_context is None:
+            unavailable.append("literature_interpretation_module_unavailable")
+        else:
+            try:
+                literature_interpretation_context = build_literature_interpretation_context(
+                    run_root=run_root,
+                    output_dir=report_dir / "interpretation",
+                    activity_analysis_gate=activity_analysis_gate,
+                    raw_metrics=raw_metrics,
+                    final_comparison=comp_final,
+                    seg_summary=seg_summary,
+                    seg_comparison=seg_comp,
+                    paired_trace_summary=paired_assets.get("summary"),
+                )
+            except Exception as exc:
+                unavailable.append(f"literature_interpretation_context_failed:{type(exc).__name__}")
+        if literature_interpretation_context and build_literature_grounded_summary is not None:
+            try:
+                literature_chunks_path = _env_text_report(
+                    "NEUROPILOT_RAG_LITERATURE_CHUNKS",
+                    str(Path(__file__).resolve().parent / "literature" / "index" / "literature_chunks.jsonl"),
+                )
+                literature_grounded_summary = build_literature_grounded_summary(
+                    interpretation_context=literature_interpretation_context,
+                    output_dir=report_dir / "interpretation",
+                    chunks_path=literature_chunks_path,
+                    literature_enabled=_env_bool_report("NEUROPILOT_RAG_LITERATURE_ENABLED", True),
+                    top_k=max(1, _env_int_report("NEUROPILOT_RAG_LITERATURE_TOP_K", 8)),
+                    max_chunks_per_paper=max(1, _env_int_report("NEUROPILOT_RAG_LITERATURE_MAX_CHUNKS_PER_PAPER", 2)),
+                )
+            except Exception as exc:
+                unavailable.append(f"literature_grounded_summary_failed:{type(exc).__name__}")
+        elif literature_interpretation_context:
+            unavailable.append("literature_grounded_summary_module_unavailable")
 
     def _segmentation_panel_note(info: dict[str, Any]) -> str:
         displayed = info.get("selected_count", "N/A")
@@ -3637,6 +3844,12 @@ def build_deterministic_report(
                 "caption": sections[2]["caption"],
             }
         )
+    literature_interpretation_spec = _literature_interpretation_section(
+        literature_grounded_summary,
+        literature_interpretation_context,
+    )
+    if literature_interpretation_spec is not None:
+        section_specs.append(literature_interpretation_spec)
     advisor_retrieval_bundle = _build_report_retrieval_bundle(run_root)
     advisor_evidence_spec = _advisor_evidence_section(advisor_retrieval_bundle, run_root=run_root)
     if advisor_evidence_spec is not None:
@@ -3664,6 +3877,8 @@ def build_deterministic_report(
             "mini_metrics": spec["mini_metrics"],
             "caption": spec["caption"],
         }
+        if spec.get("applied_literature_chunks"):
+            section["applied_literature_chunks"] = spec["applied_literature_chunks"]
         sections.append(section)
         section_structure[str(spec["key"])] = section["title"]
 
@@ -3673,9 +3888,9 @@ def build_deterministic_report(
         f"Intermediate denoise/registration sections removed = {not bool(report_use_intermediate_sections)}.",
         "All HTML assets are embedded via data URI when report_embed_assets=true.",
     ]
-    if not include_downstream_section:
+    if downstream_section_omitted_reason:
         layout_notes.append(
-            f"Downstream section omitted because this dataset is marked as {downstream_section_omitted_reason or 'downstream_not_applicable'}."
+            f"Downstream section retained for report-structure consistency; status = {downstream_section_omitted_reason}."
         )
 
     report_data = {
@@ -3757,6 +3972,41 @@ def build_deterministic_report(
             "temporal_heatmap_colormap": "RdBu_r",
             "temporal_heatmap_value_transform": "per_cell_zscore_plus_3",
             "temporal_heatmap_cell_aspect": "adaptive_row_height_fixed_panel",
+        },
+        "literature_interpretation_config": {
+            "enabled": bool(literature_interpretation_enabled),
+            "mode": "default_enabled",
+            "status": (
+                "summary_ready"
+                if literature_grounded_summary
+                else "context_ready"
+                if literature_interpretation_context
+                else "pending_or_unavailable"
+                if literature_interpretation_enabled
+                else "disabled"
+            ),
+            "activity_analysis_gate": activity_analysis_gate,
+            "context_json": (
+                literature_interpretation_context.get("artifacts", {}).get("context_json")
+                if isinstance(literature_interpretation_context, dict)
+                else None
+            ),
+            "summary_json": (
+                literature_grounded_summary.get("artifacts", {}).get("summary_json")
+                if isinstance(literature_grounded_summary, dict)
+                else None
+            ),
+            "literature_retrieval_json": (
+                literature_grounded_summary.get("literature_retrieval_json")
+                if isinstance(literature_grounded_summary, dict)
+                else None
+            ),
+            "deterministic_context": literature_interpretation_context,
+            "literature_grounded_summary": literature_grounded_summary,
+            "notes": [
+                "Literature-grounded report interpretation is separate from parameter advice.",
+                "Deterministic statistics are computed before local literature retrieval and report commentary generation.",
+            ],
         },
         "section_structure": section_structure,
         "asset_embedding_status": {
@@ -3847,6 +4097,17 @@ def build_deterministic_report(
         "imaging_modality_used": imaging_modality_used,
         "pixel_size_um_used": pixel_size_used,
         "fps_hz_used": fps_hz_used,
+        "literature_interpretation_enabled": bool(literature_interpretation_enabled),
+        "literature_interpretation_context_json": (
+            literature_interpretation_context.get("artifacts", {}).get("context_json")
+            if isinstance(literature_interpretation_context, dict)
+            else None
+        ),
+        "literature_grounded_summary_json": (
+            literature_grounded_summary.get("artifacts", {}).get("summary_json")
+            if isinstance(literature_grounded_summary, dict)
+            else None
+        ),
         "unavailable_metrics": unavailable,
     }
     _write_json(report_manifest_path, manifest_payload)
@@ -3865,12 +4126,22 @@ def build_deterministic_report(
         "kymograph_lines": kymograph_lines,
         "correlation_panel_source": "frame_to_temporal_mean_projection",
         "standalone_html_generated": bool(report_embed_assets and report_inline_css),
+        "literature_interpretation_context_json": (
+            literature_interpretation_context.get("artifacts", {}).get("context_json")
+            if isinstance(literature_interpretation_context, dict)
+            else None
+        ),
+        "literature_grounded_summary_json": (
+            literature_grounded_summary.get("artifacts", {}).get("summary_json")
+            if isinstance(literature_grounded_summary, dict)
+            else None
+        ),
         "unavailable_metrics": unavailable,
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build deterministic scientific report from existing NeuMar artifacts.")
+    parser = argparse.ArgumentParser(description="Build deterministic scientific report from existing NeuroPilot artifacts.")
     parser.add_argument("--run-root", required=True, help="Pipeline run root that already contains metrics/final/segmentation artifacts")
     parser.add_argument("--output-dir", default=None, help="Optional explicit report output directory")
     parser.add_argument("--no-pdf", action="store_true", help="Skip optional PDF export")

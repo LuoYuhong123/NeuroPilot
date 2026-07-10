@@ -25,17 +25,27 @@ If your TIFF files are currently flat in one large folder, prepare them first:
 python prepare_input_tiffs.py --input-dir /path/to/flat_tif_folder
 ```
 
-## Repository Quick Demo
+## Repository Demo Data
 
-The repository includes one small smoke-test movie under `demo_data/quick_demo/quick_demo.tif`. The current bundle is an `80 x 448 x 448` center crop from `raw_LEC`, selected to reduce obvious blank borders in processed demo outputs while keeping runtime manageable.
+The current demo layout uses two first-level dataset folders:
 
-From the repository root, a minimal quick-demo run is:
+```text
+demo_data/
+  24h/
+    CellVideo 01-1.tif
+  spine/
+    ju2df_5day_freemoving-male1-5day-image-pain 0.tif
+```
+
+The TIFF payloads are large, so the repository tracks the folder layout and distributes the movies outside normal git history.
+
+From the repository root, a minimal demo run is:
 
 ```bash
 python neuropilot_pipeline.py \
   --input-dir demo_data \
-  --subfolders quick_demo \
-  --output-dir runs/quick_demo \
+  --subfolders 24h,spine \
+  --output-dir runs/demo_data \
   --non-cell-data \
   --llm-mode off \
   --GPU 0
@@ -48,7 +58,7 @@ Release downloads:
 
 ## Cell-Data Run
 
-Run the main command from the `neumar` environment. If your downstream segmentation environment keeps the default name `suite2p`, you can omit `--downstream-env`.
+Run the main command from the `neuropilot` environment. If your downstream segmentation environment keeps the default name `suite2p`, you can omit `--downstream-env`.
 
 ```bash
 python neuropilot_pipeline.py \
@@ -112,4 +122,4 @@ By default:
 - loose TIFF files directly under `--input-dir` should be preprocessed first
 - reports are generated as HTML, not PDF
 - downstream segmentation is enabled unless `--non-cell-data` is used or `NEUROPILOT_IS_CELL_DATA=false` is set
-- even for the full two-environment workflow, the main command is run from `neumar`
+- even for the full two-environment workflow, the main command is run from `neuropilot`

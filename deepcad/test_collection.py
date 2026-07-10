@@ -236,7 +236,7 @@ class testing_class:
     @torch.inference_mode()
     def test(self):
         pth_count = 0
-        print(f"\033[1;31m🚨🚨🚨 MODEL: {self.model_list} 🚨🚨🚨\033[0m")
+        print(f"\033[1;31m[MODEL] {self.model_list}\033[0m")
 
         if not self.model_list or not self.model_list.endswith(".pth"):
             print("\033[1;31mNo valid .pth model found to test.\033[0m")

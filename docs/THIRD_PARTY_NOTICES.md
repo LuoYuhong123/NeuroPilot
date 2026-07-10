@@ -13,7 +13,7 @@ This is the safest repository-level choice for the current public snapshot becau
 
 ## NeuroPilot-Original Components
 
-The pipeline orchestration, metrics aggregation, report generation, and most surrounding glue code in files such as `neuropilot_pipeline.py`, `NeuMar_function.py`, `pipeline_metrics.py`, `report_builder.py`, and `report_figures.py` are original NeuroPilot work released in this repository under GPL-3.0.
+The pipeline orchestration, metrics aggregation, report generation, and most surrounding glue code in files such as `neuropilot_pipeline.py`, `neuropilot_function.py`, `pipeline_metrics.py`, `report_builder.py`, and `report_figures.py` are original NeuroPilot work released in this repository under GPL-3.0.
 
 ## DeepCAD-RT-Derived Denoising Components
 
@@ -35,7 +35,7 @@ The suite2p source code is not redistributed in this repository. Users install s
 
 ## Registration / Motion-Correction Stack (`demotion/`)
 
-Based on the current repository history and local project notes, the registration / motion-correction stack redistributed under `demotion/` is treated as NeuroPilot / NeuMar-original code, except where a file carries a separate embedded notice.
+Based on the current repository history and local project notes, the registration / motion-correction stack redistributed under `demotion/` is treated as NeuroPilot-original code, except where a file carries a separate embedded notice.
 
 Known bundled third-party notice inside this directory:
 - `demotion/flow_viz.py` explicitly states that the flow-visualization code comes from Tom Runia's OpticalFlow_Visualization project and carries an MIT notice in the file itself

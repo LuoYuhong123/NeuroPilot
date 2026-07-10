@@ -1,0 +1,6040 @@
+GPU: 0,1
+_preprocess_logged: true
+b1: 0.5
+b2: 0.999
+batch_size: 2
+datasets_name: CellVideo 07_iter0_demotion
+datasets_path: .//0_MF4_v1//results_demotion_MF2//CellVideo 07_iter0_demotion
+fmap: 8
+gap_t: 256
+gap_x: 96
+gap_y: 96
+img_dict:
+  CellVideo 07:
+    coordinate_list:
+    - end_h: 430
+      end_s: 3205
+      end_w: 513
+      init_h: 238
+      init_s: 2693
+      init_w: 321
+    - end_h: 359
+      end_s: 1351
+      end_w: 335
+      init_h: 167
+      init_s: 839
+      init_w: 143
+    - end_h: 464
+      end_s: 2784
+      end_w: 463
+      init_h: 272
+      init_s: 2272
+      init_w: 271
+    - end_h: 432
+      end_s: 2300
+      end_w: 495
+      init_h: 240
+      init_s: 1788
+      init_w: 303
+    - end_h: 249
+      end_s: 2242
+      end_w: 495
+      init_h: 57
+      init_s: 1730
+      init_w: 303
+    - end_h: 344
+      end_s: 2703
+      end_w: 598
+      init_h: 152
+      init_s: 2191
+      init_w: 406
+    - end_h: 241
+      end_s: 1331
+      end_w: 552
+      init_h: 49
+      init_s: 819
+      init_w: 360
+    - end_h: 210
+      end_s: 1633
+      end_w: 291
+      init_h: 18
+      init_s: 1121
+      init_w: 99
+    - end_h: 355
+      end_s: 1990
+      end_w: 564
+      init_h: 163
+      init_s: 1478
+      init_w: 372
+    - end_h: 207
+      end_s: 1592
+      end_w: 439
+      init_h: 15
+      init_s: 1080
+      init_w: 247
+    - end_h: 288
+      end_s: 3510
+      end_w: 565
+      init_h: 96
+      init_s: 2998
+      init_w: 373
+    - end_h: 507
+      end_s: 1364
+      end_w: 354
+      init_h: 315
+      init_s: 852
+      init_w: 162
+    - end_h: 420
+      end_s: 2882
+      end_w: 366
+      init_h: 228
+      init_s: 2370
+      init_w: 174
+    - end_h: 289
+      end_s: 2183
+      end_w: 216
+      init_h: 97
+      init_s: 1671
+      init_w: 24
+    - end_h: 307
+      end_s: 2667
+      end_w: 445
+      init_h: 115
+      init_s: 2155
+      init_w: 253
+    - end_h: 391
+      end_s: 3914
+      end_w: 479
+      init_h: 199
+      init_s: 3402
+      init_w: 287
+    - end_h: 420
+      end_s: 3586
+      end_w: 416
+      init_h: 228
+      init_s: 3074
+      init_w: 224
+    - end_h: 413
+      end_s: 1804
+      end_w: 522
+      init_h: 221
+      init_s: 1292
+      init_w: 330
+    - end_h: 475
+      end_s: 2667
+      end_w: 529
+      init_h: 283
+      init_s: 2155
+      init_w: 337
+    - end_h: 340
+      end_s: 1482
+      end_w: 359
+      init_h: 148
+      init_s: 970
+      init_w: 167
+    - end_h: 398
+      end_s: 4788
+      end_w: 227
+      init_h: 206
+      init_s: 4276
+      init_w: 35
+    - end_h: 219
+      end_s: 1057
+      end_w: 480
+      init_h: 27
+      init_s: 545
+      init_w: 288
+    - end_h: 198
+      end_s: 2844
+      end_w: 535
+      init_h: 6
+      init_s: 2332
+      init_w: 343
+    - end_h: 305
+      end_s: 1767
+      end_w: 584
+      init_h: 113
+      init_s: 1255
+      init_w: 392
+    - end_h: 229
+      end_s: 4141
+      end_w: 368
+      init_h: 37
+      init_s: 3629
+      init_w: 176
+    - end_h: 380
+      end_s: 4241
+      end_w: 453
+      init_h: 188
+      init_s: 3729
+      init_w: 261
+    - end_h: 339
+      end_s: 3764
+      end_w: 277
+      init_h: 147
+      init_s: 3252
+      init_w: 85
+    - end_h: 462
+      end_s: 3862
+      end_w: 422
+      init_h: 270
+      init_s: 3350
+      init_w: 230
+    - end_h: 198
+      end_s: 4451
+      end_w: 227
+      init_h: 6
+      init_s: 3939
+      init_w: 35
+    - end_h: 491
+      end_s: 2541
+      end_w: 472
+      init_h: 299
+      init_s: 2029
+      init_w: 280
+    - end_h: 318
+      end_s: 1016
+      end_w: 221
+      init_h: 126
+      init_s: 504
+      init_w: 29
+    - end_h: 477
+      end_s: 4552
+      end_w: 267
+      init_h: 285
+      init_s: 4040
+      init_w: 75
+    - end_h: 505
+      end_s: 4766
+      end_w: 377
+      init_h: 313
+      init_s: 4254
+      init_w: 185
+    - end_h: 406
+      end_s: 1979
+      end_w: 247
+      init_h: 214
+      init_s: 1467
+      init_w: 55
+    - end_h: 274
+      end_s: 729
+      end_w: 293
+      init_h: 82
+      init_s: 217
+      init_w: 101
+    - end_h: 461
+      end_s: 2570
+      end_w: 488
+      init_h: 269
+      init_s: 2058
+      init_w: 296
+    - end_h: 295
+      end_s: 4112
+      end_w: 462
+      init_h: 103
+      init_s: 3600
+      init_w: 270
+    - end_h: 495
+      end_s: 3948
+      end_w: 417
+      init_h: 303
+      init_s: 3436
+      init_w: 225
+    - end_h: 502
+      end_s: 789
+      end_w: 275
+      init_h: 310
+      init_s: 277
+      init_w: 83
+    - end_h: 427
+      end_s: 4071
+      end_w: 390
+      init_h: 235
+      init_s: 3559
+      init_w: 198
+    - end_h: 425
+      end_s: 3294
+      end_w: 598
+      init_h: 233
+      init_s: 2782
+      init_w: 406
+    - end_h: 238
+      end_s: 2874
+      end_w: 192
+      init_h: 46
+      init_s: 2362
+      init_w: 0
+    - end_h: 298
+      end_s: 1684
+      end_w: 484
+      init_h: 106
+      init_s: 1172
+      init_w: 292
+    - end_h: 310
+      end_s: 4333
+      end_w: 238
+      init_h: 118
+      init_s: 3821
+      init_w: 46
+    - end_h: 429
+      end_s: 2953
+      end_w: 528
+      init_h: 237
+      init_s: 2441
+      init_w: 336
+    - end_h: 225
+      end_s: 2163
+      end_w: 481
+      init_h: 33
+      init_s: 1651
+      init_w: 289
+    - end_h: 498
+      end_s: 2807
+      end_w: 378
+      init_h: 306
+      init_s: 2295
+      init_w: 186
+    - end_h: 452
+      end_s: 814
+      end_w: 560
+      init_h: 260
+      init_s: 302
+      init_w: 368
+    - end_h: 468
+      end_s: 3332
+      end_w: 397
+      init_h: 276
+      init_s: 2820
+      init_w: 205
+    - end_h: 486
+      end_s: 4478
+      end_w: 537
+      init_h: 294
+      init_s: 3966
+      init_w: 345
+    - end_h: 220
+      end_s: 3314
+      end_w: 548
+      init_h: 28
+      init_s: 2802
+      init_w: 356
+    - end_h: 244
+      end_s: 2522
+      end_w: 214
+      init_h: 52
+      init_s: 2010
+      init_w: 22
+    - end_h: 195
+      end_s: 2318
+      end_w: 578
+      init_h: 3
+      init_s: 1806
+      init_w: 386
+    - end_h: 505
+      end_s: 4821
+      end_w: 520
+      init_h: 313
+      init_s: 4309
+      init_w: 328
+    - end_h: 355
+      end_s: 2221
+      end_w: 461
+      init_h: 163
+      init_s: 1709
+      init_w: 269
+    - end_h: 392
+      end_s: 2945
+      end_w: 333
+      init_h: 200
+      init_s: 2433
+      init_w: 141
+    - end_h: 433
+      end_s: 3294
+      end_w: 225
+      init_h: 241
+      init_s: 2782
+      init_w: 33
+    - end_h: 396
+      end_s: 1835
+      end_w: 292
+      init_h: 204
+      init_s: 1323
+      init_w: 100
+    - end_h: 228
+      end_s: 3382
+      end_w: 478
+      init_h: 36
+      init_s: 2870
+      init_w: 286
+    - end_h: 304
+      end_s: 4730
+      end_w: 290
+      init_h: 112
+      init_s: 4218
+      init_w: 98
+    - end_h: 302
+      end_s: 2515
+      end_w: 455
+      init_h: 110
+      init_s: 2003
+      init_w: 263
+    - end_h: 493
+      end_s: 3975
+      end_w: 400
+      init_h: 301
+      init_s: 3463
+      init_w: 208
+    - end_h: 413
+      end_s: 3124
+      end_w: 581
+      init_h: 221
+      init_s: 2612
+      init_w: 389
+    - end_h: 382
+      end_s: 4359
+      end_w: 275
+      init_h: 190
+      init_s: 3847
+      init_w: 83
+    - end_h: 192
+      end_s: 3830
+      end_w: 435
+      init_h: 0
+      init_s: 3318
+      init_w: 243
+    - end_h: 202
+      end_s: 4711
+      end_w: 220
+      init_h: 10
+      init_s: 4199
+      init_w: 28
+    - end_h: 378
+      end_s: 3567
+      end_w: 313
+      init_h: 186
+      init_s: 3055
+      init_w: 121
+    - end_h: 444
+      end_s: 2828
+      end_w: 502
+      init_h: 252
+      init_s: 2316
+      init_w: 310
+    - end_h: 309
+      end_s: 4309
+      end_w: 481
+      init_h: 117
+      init_s: 3797
+      init_w: 289
+    - end_h: 390
+      end_s: 1238
+      end_w: 477
+      init_h: 198
+      init_s: 726
+      init_w: 285
+    - end_h: 439
+      end_s: 3494
+      end_w: 529
+      init_h: 247
+      init_s: 2982
+      init_w: 337
+    - end_h: 496
+      end_s: 2191
+      end_w: 599
+      init_h: 304
+      init_s: 1679
+      init_w: 407
+    - end_h: 275
+      end_s: 4265
+      end_w: 341
+      init_h: 83
+      init_s: 3753
+      init_w: 149
+    - end_h: 297
+      end_s: 3384
+      end_w: 339
+      init_h: 105
+      init_s: 2872
+      init_w: 147
+    - end_h: 274
+      end_s: 1845
+      end_w: 590
+      init_h: 82
+      init_s: 1333
+      init_w: 398
+    - end_h: 384
+      end_s: 2019
+      end_w: 267
+      init_h: 192
+      init_s: 1507
+      init_w: 75
+    - end_h: 505
+      end_s: 1807
+      end_w: 287
+      init_h: 313
+      init_s: 1295
+      init_w: 95
+    - end_h: 369
+      end_s: 4920
+      end_w: 531
+      init_h: 177
+      init_s: 4408
+      init_w: 339
+    - end_h: 238
+      end_s: 3058
+      end_w: 582
+      init_h: 46
+      init_s: 2546
+      init_w: 390
+    - end_h: 334
+      end_s: 4614
+      end_w: 471
+      init_h: 142
+      init_s: 4102
+      init_w: 279
+    - end_h: 326
+      end_s: 2217
+      end_w: 271
+      init_h: 134
+      init_s: 1705
+      init_w: 79
+    - end_h: 256
+      end_s: 1326
+      end_w: 197
+      init_h: 64
+      init_s: 814
+      init_w: 5
+    - end_h: 486
+      end_s: 3914
+      end_w: 393
+      init_h: 294
+      init_s: 3402
+      init_w: 201
+    - end_h: 437
+      end_s: 4339
+      end_w: 278
+      init_h: 245
+      init_s: 3827
+      init_w: 86
+    - end_h: 455
+      end_s: 958
+      end_w: 277
+      init_h: 263
+      init_s: 446
+      init_w: 85
+    - end_h: 277
+      end_s: 1753
+      end_w: 204
+      init_h: 85
+      init_s: 1241
+      init_w: 12
+    - end_h: 256
+      end_s: 4298
+      end_w: 500
+      init_h: 64
+      init_s: 3786
+      init_w: 308
+    - end_h: 330
+      end_s: 2997
+      end_w: 265
+      init_h: 138
+      init_s: 2485
+      init_w: 73
+    - end_h: 353
+      end_s: 700
+      end_w: 327
+      init_h: 161
+      init_s: 188
+      init_w: 135
+    - end_h: 195
+      end_s: 2745
+      end_w: 388
+      init_h: 3
+      init_s: 2233
+      init_w: 196
+    - end_h: 415
+      end_s: 2569
+      end_w: 352
+      init_h: 223
+      init_s: 2057
+      init_w: 160
+    - end_h: 294
+      end_s: 3273
+      end_w: 311
+      init_h: 102
+      init_s: 2761
+      init_w: 119
+    - end_h: 260
+      end_s: 4684
+      end_w: 263
+      init_h: 68
+      init_s: 4172
+      init_w: 71
+    - end_h: 283
+      end_s: 3809
+      end_w: 283
+      init_h: 91
+      init_s: 3297
+      init_w: 91
+    - end_h: 195
+      end_s: 1496
+      end_w: 237
+      init_h: 3
+      init_s: 984
+      init_w: 45
+    - end_h: 362
+      end_s: 1852
+      end_w: 426
+      init_h: 170
+      init_s: 1340
+      init_w: 234
+    - end_h: 449
+      end_s: 2806
+      end_w: 491
+      init_h: 257
+      init_s: 2294
+      init_w: 299
+    - end_h: 263
+      end_s: 4886
+      end_w: 358
+      init_h: 71
+      init_s: 4374
+      init_w: 166
+    - end_h: 259
+      end_s: 3891
+      end_w: 569
+      init_h: 67
+      init_s: 3379
+      init_w: 377
+    - end_h: 298
+      end_s: 2873
+      end_w: 596
+      init_h: 106
+      init_s: 2361
+      init_w: 404
+    - end_h: 261
+      end_s: 4842
+      end_w: 277
+      init_h: 69
+      init_s: 4330
+      init_w: 85
+    - end_h: 238
+      end_s: 4886
+      end_w: 548
+      init_h: 46
+      init_s: 4374
+      init_w: 356
+    - end_h: 242
+      end_s: 2084
+      end_w: 526
+      init_h: 50
+      init_s: 1572
+      init_w: 334
+    - end_h: 354
+      end_s: 2200
+      end_w: 490
+      init_h: 162
+      init_s: 1688
+      init_w: 298
+    - end_h: 193
+      end_s: 4666
+      end_w: 579
+      init_h: 1
+      init_s: 4154
+      init_w: 387
+    - end_h: 462
+      end_s: 2494
+      end_w: 244
+      init_h: 270
+      init_s: 1982
+      init_w: 52
+    - end_h: 300
+      end_s: 1937
+      end_w: 216
+      init_h: 108
+      init_s: 1425
+      init_w: 24
+    - end_h: 239
+      end_s: 2283
+      end_w: 269
+      init_h: 47
+      init_s: 1771
+      init_w: 77
+    - end_h: 253
+      end_s: 3077
+      end_w: 289
+      init_h: 61
+      init_s: 2565
+      init_w: 97
+    - end_h: 424
+      end_s: 2602
+      end_w: 443
+      init_h: 232
+      init_s: 2090
+      init_w: 251
+    - end_h: 307
+      end_s: 2213
+      end_w: 249
+      init_h: 115
+      init_s: 1701
+      init_w: 57
+    - end_h: 467
+      end_s: 1565
+      end_w: 341
+      init_h: 275
+      init_s: 1053
+      init_w: 149
+    - end_h: 479
+      end_s: 2567
+      end_w: 412
+      init_h: 287
+      init_s: 2055
+      init_w: 220
+    - end_h: 201
+      end_s: 2313
+      end_w: 425
+      init_h: 9
+      init_s: 1801
+      init_w: 233
+    - end_h: 324
+      end_s: 3126
+      end_w: 476
+      init_h: 132
+      init_s: 2614
+      init_w: 284
+    - end_h: 438
+      end_s: 2611
+      end_w: 419
+      init_h: 246
+      init_s: 2099
+      init_w: 227
+    - end_h: 363
+      end_s: 1695
+      end_w: 214
+      init_h: 171
+      init_s: 1183
+      init_w: 22
+    - end_h: 223
+      end_s: 4913
+      end_w: 230
+      init_h: 31
+      init_s: 4401
+      init_w: 38
+    - end_h: 382
+      end_s: 1806
+      end_w: 524
+      init_h: 190
+      init_s: 1294
+      init_w: 332
+    - end_h: 193
+      end_s: 2359
+      end_w: 338
+      init_h: 1
+      init_s: 1847
+      init_w: 146
+    - end_h: 204
+      end_s: 4361
+      end_w: 548
+      init_h: 12
+      init_s: 3849
+      init_w: 356
+    - end_h: 384
+      end_s: 1404
+      end_w: 506
+      init_h: 192
+      init_s: 892
+      init_w: 314
+    - end_h: 342
+      end_s: 4796
+      end_w: 349
+      init_h: 150
+      init_s: 4284
+      init_w: 157
+    - end_h: 478
+      end_s: 3999
+      end_w: 211
+      init_h: 286
+      init_s: 3487
+      init_w: 19
+    - end_h: 434
+      end_s: 4718
+      end_w: 264
+      init_h: 242
+      init_s: 4206
+      init_w: 72
+    - end_h: 315
+      end_s: 3726
+      end_w: 568
+      init_h: 123
+      init_s: 3214
+      init_w: 376
+    - end_h: 476
+      end_s: 4141
+      end_w: 364
+      init_h: 284
+      init_s: 3629
+      init_w: 172
+    - end_h: 378
+      end_s: 721
+      end_w: 306
+      init_h: 186
+      init_s: 209
+      init_w: 114
+    - end_h: 506
+      end_s: 1766
+      end_w: 532
+      init_h: 314
+      init_s: 1254
+      init_w: 340
+    - end_h: 475
+      end_s: 3694
+      end_w: 551
+      init_h: 283
+      init_s: 3182
+      init_w: 359
+    - end_h: 279
+      end_s: 2067
+      end_w: 530
+      init_h: 87
+      init_s: 1555
+      init_w: 338
+    - end_h: 318
+      end_s: 2406
+      end_w: 207
+      init_h: 126
+      init_s: 1894
+      init_w: 15
+    - end_h: 366
+      end_s: 1450
+      end_w: 504
+      init_h: 174
+      init_s: 938
+      init_w: 312
+    - end_h: 496
+      end_s: 2494
+      end_w: 522
+      init_h: 304
+      init_s: 1982
+      init_w: 330
+    - end_h: 352
+      end_s: 3206
+      end_w: 374
+      init_h: 160
+      init_s: 2694
+      init_w: 182
+    - end_h: 442
+      end_s: 1674
+      end_w: 431
+      init_h: 250
+      init_s: 1162
+      init_w: 239
+    - end_h: 508
+      end_s: 2226
+      end_w: 529
+      init_h: 316
+      init_s: 1714
+      init_w: 337
+    - end_h: 242
+      end_s: 1615
+      end_w: 550
+      init_h: 50
+      init_s: 1103
+      init_w: 358
+    - end_h: 414
+      end_s: 3300
+      end_w: 422
+      init_h: 222
+      init_s: 2788
+      init_w: 230
+    - end_h: 302
+      end_s: 4182
+      end_w: 307
+      init_h: 110
+      init_s: 3670
+      init_w: 115
+    - end_h: 205
+      end_s: 2158
+      end_w: 209
+      init_h: 13
+      init_s: 1646
+      init_w: 17
+    - end_h: 487
+      end_s: 1286
+      end_w: 338
+      init_h: 295
+      init_s: 774
+      init_w: 146
+    - end_h: 430
+      end_s: 2348
+      end_w: 419
+      init_h: 238
+      init_s: 1836
+      init_w: 227
+    - end_h: 329
+      end_s: 2399
+      end_w: 477
+      init_h: 137
+      init_s: 1887
+      init_w: 285
+    - end_h: 281
+      end_s: 2607
+      end_w: 451
+      init_h: 89
+      init_s: 2095
+      init_w: 259
+    - end_h: 342
+      end_s: 3700
+      end_w: 549
+      init_h: 150
+      init_s: 3188
+      init_w: 357
+    - end_h: 283
+      end_s: 3882
+      end_w: 300
+      init_h: 91
+      init_s: 3370
+      init_w: 108
+    - end_h: 428
+      end_s: 2829
+      end_w: 559
+      init_h: 236
+      init_s: 2317
+      init_w: 367
+    - end_h: 336
+      end_s: 1430
+      end_w: 291
+      init_h: 144
+      init_s: 918
+      init_w: 99
+    - end_h: 200
+      end_s: 2511
+      end_w: 570
+      init_h: 8
+      init_s: 1999
+      init_w: 378
+    - end_h: 357
+      end_s: 1130
+      end_w: 245
+      init_h: 165
+      init_s: 618
+      init_w: 53
+    - end_h: 273
+      end_s: 2111
+      end_w: 406
+      init_h: 81
+      init_s: 1599
+      init_w: 214
+    - end_h: 401
+      end_s: 608
+      end_w: 396
+      init_h: 209
+      init_s: 96
+      init_w: 204
+    - end_h: 428
+      end_s: 4382
+      end_w: 477
+      init_h: 236
+      init_s: 3870
+      init_w: 285
+    - end_h: 330
+      end_s: 1351
+      end_w: 411
+      init_h: 138
+      init_s: 839
+      init_w: 219
+    - end_h: 467
+      end_s: 612
+      end_w: 267
+      init_h: 275
+      init_s: 100
+      init_w: 75
+    - end_h: 438
+      end_s: 1554
+      end_w: 480
+      init_h: 246
+      init_s: 1042
+      init_w: 288
+    - end_h: 262
+      end_s: 658
+      end_w: 546
+      init_h: 70
+      init_s: 146
+      init_w: 354
+    - end_h: 258
+      end_s: 3671
+      end_w: 348
+      init_h: 66
+      init_s: 3159
+      init_w: 156
+    - end_h: 292
+      end_s: 2910
+      end_w: 316
+      init_h: 100
+      init_s: 2398
+      init_w: 124
+    - end_h: 501
+      end_s: 4727
+      end_w: 210
+      init_h: 309
+      init_s: 4215
+      init_w: 18
+    - end_h: 327
+      end_s: 915
+      end_w: 292
+      init_h: 135
+      init_s: 403
+      init_w: 100
+    - end_h: 402
+      end_s: 681
+      end_w: 288
+      init_h: 210
+      init_s: 169
+      init_w: 96
+    - end_h: 324
+      end_s: 3523
+      end_w: 331
+      init_h: 132
+      init_s: 3011
+      init_w: 139
+    - end_h: 308
+      end_s: 4522
+      end_w: 209
+      init_h: 116
+      init_s: 4010
+      init_w: 17
+    - end_h: 250
+      end_s: 3119
+      end_w: 275
+      init_h: 58
+      init_s: 2607
+      init_w: 83
+    - end_h: 392
+      end_s: 684
+      end_w: 506
+      init_h: 200
+      init_s: 172
+      init_w: 314
+    - end_h: 287
+      end_s: 4674
+      end_w: 276
+      init_h: 95
+      init_s: 4162
+      init_w: 84
+    - end_h: 366
+      end_s: 1738
+      end_w: 222
+      init_h: 174
+      init_s: 1226
+      init_w: 30
+    - end_h: 387
+      end_s: 3080
+      end_w: 303
+      init_h: 195
+      init_s: 2568
+      init_w: 111
+    - end_h: 380
+      end_s: 3181
+      end_w: 558
+      init_h: 188
+      init_s: 2669
+      init_w: 366
+    - end_h: 392
+      end_s: 1910
+      end_w: 591
+      init_h: 200
+      init_s: 1398
+      init_w: 399
+    - end_h: 231
+      end_s: 1388
+      end_w: 371
+      init_h: 39
+      init_s: 876
+      init_w: 179
+    - end_h: 416
+      end_s: 842
+      end_w: 411
+      init_h: 224
+      init_s: 330
+      init_w: 219
+    - end_h: 217
+      end_s: 4299
+      end_w: 389
+      init_h: 25
+      init_s: 3787
+      init_w: 197
+    - end_h: 404
+      end_s: 2348
+      end_w: 272
+      init_h: 212
+      init_s: 1836
+      init_w: 80
+    - end_h: 509
+      end_s: 2652
+      end_w: 434
+      init_h: 317
+      init_s: 2140
+      init_w: 242
+    - end_h: 399
+      end_s: 4894
+      end_w: 486
+      init_h: 207
+      init_s: 4382
+      init_w: 294
+    - end_h: 325
+      end_s: 3754
+      end_w: 324
+      init_h: 133
+      init_s: 3242
+      init_w: 132
+    - end_h: 465
+      end_s: 4147
+      end_w: 257
+      init_h: 273
+      init_s: 3635
+      init_w: 65
+    - end_h: 345
+      end_s: 1475
+      end_w: 243
+      init_h: 153
+      init_s: 963
+      init_w: 51
+    - end_h: 249
+      end_s: 2298
+      end_w: 505
+      init_h: 57
+      init_s: 1786
+      init_w: 313
+    - end_h: 316
+      end_s: 3556
+      end_w: 497
+      init_h: 124
+      init_s: 3044
+      init_w: 305
+    - end_h: 485
+      end_s: 1676
+      end_w: 599
+      init_h: 293
+      init_s: 1164
+      init_w: 407
+    - end_h: 274
+      end_s: 4788
+      end_w: 560
+      init_h: 82
+      init_s: 4276
+      init_w: 368
+    - end_h: 392
+      end_s: 2033
+      end_w: 577
+      init_h: 200
+      init_s: 1521
+      init_w: 385
+    - end_h: 423
+      end_s: 4173
+      end_w: 368
+      init_h: 231
+      init_s: 3661
+      init_w: 176
+    - end_h: 466
+      end_s: 4367
+      end_w: 574
+      init_h: 274
+      init_s: 3855
+      init_w: 382
+    - end_h: 278
+      end_s: 3502
+      end_w: 582
+      init_h: 86
+      init_s: 2990
+      init_w: 390
+    - end_h: 459
+      end_s: 4347
+      end_w: 399
+      init_h: 267
+      init_s: 3835
+      init_w: 207
+    - end_h: 304
+      end_s: 577
+      end_w: 599
+      init_h: 112
+      init_s: 65
+      init_w: 407
+    - end_h: 466
+      end_s: 3864
+      end_w: 317
+      init_h: 274
+      init_s: 3352
+      init_w: 125
+    - end_h: 386
+      end_s: 1327
+      end_w: 533
+      init_h: 194
+      init_s: 815
+      init_w: 341
+    - end_h: 377
+      end_s: 1361
+      end_w: 469
+      init_h: 185
+      init_s: 849
+      init_w: 277
+    - end_h: 338
+      end_s: 2499
+      end_w: 328
+      init_h: 146
+      init_s: 1987
+      init_w: 136
+    - end_h: 440
+      end_s: 2022
+      end_w: 584
+      init_h: 248
+      init_s: 1510
+      init_w: 392
+    - end_h: 444
+      end_s: 2111
+      end_w: 403
+      init_h: 252
+      init_s: 1599
+      init_w: 211
+    - end_h: 337
+      end_s: 1495
+      end_w: 261
+      init_h: 145
+      init_s: 983
+      init_w: 69
+    - end_h: 249
+      end_s: 1625
+      end_w: 259
+      init_h: 57
+      init_s: 1113
+      init_w: 67
+    - end_h: 300
+      end_s: 3214
+      end_w: 419
+      init_h: 108
+      init_s: 2702
+      init_w: 227
+    - end_h: 248
+      end_s: 1467
+      end_w: 266
+      init_h: 56
+      init_s: 955
+      init_w: 74
+    - end_h: 420
+      end_s: 4131
+      end_w: 259
+      init_h: 228
+      init_s: 3619
+      init_w: 67
+    - end_h: 392
+      end_s: 1505
+      end_w: 219
+      init_h: 200
+      init_s: 993
+      init_w: 27
+    - end_h: 404
+      end_s: 3285
+      end_w: 395
+      init_h: 212
+      init_s: 2773
+      init_w: 203
+    - end_h: 334
+      end_s: 4328
+      end_w: 267
+      init_h: 142
+      init_s: 3816
+      init_w: 75
+    - end_h: 340
+      end_s: 2122
+      end_w: 272
+      init_h: 148
+      init_s: 1610
+      init_w: 80
+    - end_h: 491
+      end_s: 4132
+      end_w: 249
+      init_h: 299
+      init_s: 3620
+      init_w: 57
+    - end_h: 470
+      end_s: 625
+      end_w: 586
+      init_h: 278
+      init_s: 113
+      init_w: 394
+    - end_h: 460
+      end_s: 4522
+      end_w: 556
+      init_h: 268
+      init_s: 4010
+      init_w: 364
+    - end_h: 464
+      end_s: 2391
+      end_w: 558
+      init_h: 272
+      init_s: 1879
+      init_w: 366
+    - end_h: 248
+      end_s: 1000
+      end_w: 487
+      init_h: 56
+      init_s: 488
+      init_w: 295
+    - end_h: 483
+      end_s: 2954
+      end_w: 550
+      init_h: 291
+      init_s: 2442
+      init_w: 358
+    - end_h: 332
+      end_s: 4333
+      end_w: 509
+      init_h: 140
+      init_s: 3821
+      init_w: 317
+    - end_h: 408
+      end_s: 3887
+      end_w: 504
+      init_h: 216
+      init_s: 3375
+      init_w: 312
+    - end_h: 494
+      end_s: 4543
+      end_w: 522
+      init_h: 302
+      init_s: 4031
+      init_w: 330
+    - end_h: 210
+      end_s: 4340
+      end_w: 448
+      init_h: 18
+      init_s: 3828
+      init_w: 256
+    - end_h: 418
+      end_s: 2833
+      end_w: 400
+      init_h: 226
+      init_s: 2321
+      init_w: 208
+    - end_h: 505
+      end_s: 2510
+      end_w: 411
+      init_h: 313
+      init_s: 1998
+      init_w: 219
+    - end_h: 438
+      end_s: 1523
+      end_w: 411
+      init_h: 246
+      init_s: 1011
+      init_w: 219
+    - end_h: 502
+      end_s: 2905
+      end_w: 384
+      init_h: 310
+      init_s: 2393
+      init_w: 192
+    - end_h: 201
+      end_s: 4082
+      end_w: 483
+      init_h: 9
+      init_s: 3570
+      init_w: 291
+    - end_h: 195
+      end_s: 2764
+      end_w: 393
+      init_h: 3
+      init_s: 2252
+      init_w: 201
+    - end_h: 370
+      end_s: 1335
+      end_w: 368
+      init_h: 178
+      init_s: 823
+      init_w: 176
+    - end_h: 420
+      end_s: 3766
+      end_w: 333
+      init_h: 228
+      init_s: 3254
+      init_w: 141
+    - end_h: 312
+      end_s: 3395
+      end_w: 551
+      init_h: 120
+      init_s: 2883
+      init_w: 359
+    - end_h: 437
+      end_s: 2663
+      end_w: 478
+      init_h: 245
+      init_s: 2151
+      init_w: 286
+    - end_h: 365
+      end_s: 787
+      end_w: 462
+      init_h: 173
+      init_s: 275
+      init_w: 270
+    - end_h: 370
+      end_s: 4224
+      end_w: 392
+      init_h: 178
+      init_s: 3712
+      init_w: 200
+    - end_h: 226
+      end_s: 4734
+      end_w: 343
+      init_h: 34
+      init_s: 4222
+      init_w: 151
+    - end_h: 459
+      end_s: 4011
+      end_w: 571
+      init_h: 267
+      init_s: 3499
+      init_w: 379
+    - end_h: 294
+      end_s: 1294
+      end_w: 425
+      init_h: 102
+      init_s: 782
+      init_w: 233
+    - end_h: 257
+      end_s: 2359
+      end_w: 216
+      init_h: 65
+      init_s: 1847
+      init_w: 24
+    - end_h: 273
+      end_s: 1906
+      end_w: 270
+      init_h: 81
+      init_s: 1394
+      init_w: 78
+    - end_h: 274
+      end_s: 4377
+      end_w: 482
+      init_h: 82
+      init_s: 3865
+      init_w: 290
+    - end_h: 272
+      end_s: 3270
+      end_w: 461
+      init_h: 80
+      init_s: 2758
+      init_w: 269
+    - end_h: 269
+      end_s: 1700
+      end_w: 362
+      init_h: 77
+      init_s: 1188
+      init_w: 170
+    - end_h: 493
+      end_s: 2406
+      end_w: 504
+      init_h: 301
+      init_s: 1894
+      init_w: 312
+    - end_h: 401
+      end_s: 2869
+      end_w: 263
+      init_h: 209
+      init_s: 2357
+      init_w: 71
+    - end_h: 286
+      end_s: 4313
+      end_w: 508
+      init_h: 94
+      init_s: 3801
+      init_w: 316
+    - end_h: 435
+      end_s: 864
+      end_w: 321
+      init_h: 243
+      init_s: 352
+      init_w: 129
+    - end_h: 237
+      end_s: 2137
+      end_w: 565
+      init_h: 45
+      init_s: 1625
+      init_w: 373
+    - end_h: 395
+      end_s: 807
+      end_w: 569
+      init_h: 203
+      init_s: 295
+      init_w: 377
+    - end_h: 444
+      end_s: 1589
+      end_w: 226
+      init_h: 252
+      init_s: 1077
+      init_w: 34
+    - end_h: 333
+      end_s: 4332
+      end_w: 433
+      init_h: 141
+      init_s: 3820
+      init_w: 241
+    - end_h: 231
+      end_s: 4946
+      end_w: 562
+      init_h: 39
+      init_s: 4434
+      init_w: 370
+    - end_h: 231
+      end_s: 2593
+      end_w: 348
+      init_h: 39
+      init_s: 2081
+      init_w: 156
+    - end_h: 339
+      end_s: 1868
+      end_w: 514
+      init_h: 147
+      init_s: 1356
+      init_w: 322
+    - end_h: 408
+      end_s: 1628
+      end_w: 447
+      init_h: 216
+      init_s: 1116
+      init_w: 255
+    - end_h: 219
+      end_s: 647
+      end_w: 439
+      init_h: 27
+      init_s: 135
+      init_w: 247
+    - end_h: 268
+      end_s: 2931
+      end_w: 204
+      init_h: 76
+      init_s: 2419
+      init_w: 12
+    - end_h: 283
+      end_s: 652
+      end_w: 550
+      init_h: 91
+      init_s: 140
+      init_w: 358
+    - end_h: 414
+      end_s: 2646
+      end_w: 216
+      init_h: 222
+      init_s: 2134
+      init_w: 24
+    - end_h: 430
+      end_s: 791
+      end_w: 220
+      init_h: 238
+      init_s: 279
+      init_w: 28
+    - end_h: 402
+      end_s: 1991
+      end_w: 243
+      init_h: 210
+      init_s: 1479
+      init_w: 51
+    - end_h: 334
+      end_s: 4313
+      end_w: 556
+      init_h: 142
+      init_s: 3801
+      init_w: 364
+    - end_h: 444
+      end_s: 687
+      end_w: 195
+      init_h: 252
+      init_s: 175
+      init_w: 3
+    - end_h: 359
+      end_s: 2647
+      end_w: 520
+      init_h: 167
+      init_s: 2135
+      init_w: 328
+    - end_h: 299
+      end_s: 2657
+      end_w: 473
+      init_h: 107
+      init_s: 2145
+      init_w: 281
+    - end_h: 277
+      end_s: 2047
+      end_w: 476
+      init_h: 85
+      init_s: 1535
+      init_w: 284
+    - end_h: 297
+      end_s: 2311
+      end_w: 276
+      init_h: 105
+      init_s: 1799
+      init_w: 84
+    - end_h: 328
+      end_s: 3142
+      end_w: 374
+      init_h: 136
+      init_s: 2630
+      init_w: 182
+    - end_h: 376
+      end_s: 2671
+      end_w: 286
+      init_h: 184
+      init_s: 2159
+      init_w: 94
+    - end_h: 389
+      end_s: 2326
+      end_w: 326
+      init_h: 197
+      init_s: 1814
+      init_w: 134
+    - end_h: 331
+      end_s: 2790
+      end_w: 369
+      init_h: 139
+      init_s: 2278
+      init_w: 177
+    - end_h: 348
+      end_s: 4958
+      end_w: 384
+      init_h: 156
+      init_s: 4446
+      init_w: 192
+    - end_h: 501
+      end_s: 2174
+      end_w: 574
+      init_h: 309
+      init_s: 1662
+      init_w: 382
+    - end_h: 247
+      end_s: 2579
+      end_w: 447
+      init_h: 55
+      init_s: 2067
+      init_w: 255
+    - end_h: 319
+      end_s: 2717
+      end_w: 367
+      init_h: 127
+      init_s: 2205
+      init_w: 175
+    - end_h: 466
+      end_s: 534
+      end_w: 465
+      init_h: 274
+      init_s: 22
+      init_w: 273
+    - end_h: 395
+      end_s: 4831
+      end_w: 216
+      init_h: 203
+      init_s: 4319
+      init_w: 24
+    - end_h: 483
+      end_s: 2835
+      end_w: 365
+      init_h: 291
+      init_s: 2323
+      init_w: 173
+    - end_h: 429
+      end_s: 4443
+      end_w: 330
+      init_h: 237
+      init_s: 3931
+      init_w: 138
+    - end_h: 401
+      end_s: 3841
+      end_w: 408
+      init_h: 209
+      init_s: 3329
+      init_w: 216
+    - end_h: 454
+      end_s: 779
+      end_w: 404
+      init_h: 262
+      init_s: 267
+      init_w: 212
+    - end_h: 210
+      end_s: 2732
+      end_w: 555
+      init_h: 18
+      init_s: 2220
+      init_w: 363
+    - end_h: 440
+      end_s: 3400
+      end_w: 481
+      init_h: 248
+      init_s: 2888
+      init_w: 289
+    - end_h: 425
+      end_s: 4769
+      end_w: 401
+      init_h: 233
+      init_s: 4257
+      init_w: 209
+    - end_h: 359
+      end_s: 590
+      end_w: 250
+      init_h: 167
+      init_s: 78
+      init_w: 58
+    - end_h: 477
+      end_s: 649
+      end_w: 329
+      init_h: 285
+      init_s: 137
+      init_w: 137
+    - end_h: 255
+      end_s: 2855
+      end_w: 540
+      init_h: 63
+      init_s: 2343
+      init_w: 348
+    - end_h: 343
+      end_s: 3793
+      end_w: 370
+      init_h: 151
+      init_s: 3281
+      init_w: 178
+    - end_h: 437
+      end_s: 3844
+      end_w: 258
+      init_h: 245
+      init_s: 3332
+      init_w: 66
+    - end_h: 257
+      end_s: 1233
+      end_w: 239
+      init_h: 65
+      init_s: 721
+      init_w: 47
+    - end_h: 266
+      end_s: 4012
+      end_w: 431
+      init_h: 74
+      init_s: 3500
+      init_w: 239
+    - end_h: 440
+      end_s: 3969
+      end_w: 268
+      init_h: 248
+      init_s: 3457
+      init_w: 76
+    - end_h: 484
+      end_s: 3953
+      end_w: 505
+      init_h: 292
+      init_s: 3441
+      init_w: 313
+    - end_h: 310
+      end_s: 3763
+      end_w: 216
+      init_h: 118
+      init_s: 3251
+      init_w: 24
+    - end_h: 374
+      end_s: 4398
+      end_w: 334
+      init_h: 182
+      init_s: 3886
+      init_w: 142
+    - end_h: 205
+      end_s: 1149
+      end_w: 216
+      init_h: 13
+      init_s: 637
+      init_w: 24
+    - end_h: 508
+      end_s: 4461
+      end_w: 443
+      init_h: 316
+      init_s: 3949
+      init_w: 251
+    - end_h: 300
+      end_s: 1271
+      end_w: 579
+      init_h: 108
+      init_s: 759
+      init_w: 387
+    - end_h: 422
+      end_s: 1678
+      end_w: 510
+      init_h: 230
+      init_s: 1166
+      init_w: 318
+    - end_h: 265
+      end_s: 4880
+      end_w: 441
+      init_h: 73
+      init_s: 4368
+      init_w: 249
+    - end_h: 241
+      end_s: 3593
+      end_w: 262
+      init_h: 49
+      init_s: 3081
+      init_w: 70
+    - end_h: 261
+      end_s: 3364
+      end_w: 299
+      init_h: 69
+      init_s: 2852
+      init_w: 107
+    - end_h: 339
+      end_s: 2965
+      end_w: 194
+      init_h: 147
+      init_s: 2453
+      init_w: 2
+    - end_h: 263
+      end_s: 2495
+      end_w: 409
+      init_h: 71
+      init_s: 1983
+      init_w: 217
+    - end_h: 261
+      end_s: 3267
+      end_w: 211
+      init_h: 69
+      init_s: 2755
+      init_w: 19
+    - end_h: 502
+      end_s: 1222
+      end_w: 573
+      init_h: 310
+      init_s: 710
+      init_w: 381
+    - end_h: 377
+      end_s: 2763
+      end_w: 428
+      init_h: 185
+      init_s: 2251
+      init_w: 236
+    - end_h: 363
+      end_s: 1342
+      end_w: 352
+      init_h: 171
+      init_s: 830
+      init_w: 160
+    - end_h: 499
+      end_s: 4732
+      end_w: 202
+      init_h: 307
+      init_s: 4220
+      init_w: 10
+    - end_h: 407
+      end_s: 1554
+      end_w: 271
+      init_h: 215
+      init_s: 1042
+      init_w: 79
+    - end_h: 258
+      end_s: 4322
+      end_w: 228
+      init_h: 66
+      init_s: 3810
+      init_w: 36
+    - end_h: 436
+      end_s: 1575
+      end_w: 239
+      init_h: 244
+      init_s: 1063
+      init_w: 47
+    - end_h: 228
+      end_s: 4084
+      end_w: 555
+      init_h: 36
+      init_s: 3572
+      init_w: 363
+    - end_h: 310
+      end_s: 3904
+      end_w: 599
+      init_h: 118
+      init_s: 3392
+      init_w: 407
+    - end_h: 346
+      end_s: 1937
+      end_w: 290
+      init_h: 154
+      init_s: 1425
+      init_w: 98
+    - end_h: 389
+      end_s: 4807
+      end_w: 520
+      init_h: 197
+      init_s: 4295
+      init_w: 328
+    - end_h: 334
+      end_s: 1096
+      end_w: 511
+      init_h: 142
+      init_s: 584
+      init_w: 319
+    - end_h: 282
+      end_s: 2907
+      end_w: 451
+      init_h: 90
+      init_s: 2395
+      init_w: 259
+    - end_h: 475
+      end_s: 3039
+      end_w: 388
+      init_h: 283
+      init_s: 2527
+      init_w: 196
+    - end_h: 439
+      end_s: 1468
+      end_w: 307
+      init_h: 247
+      init_s: 956
+      init_w: 115
+    - end_h: 496
+      end_s: 3286
+      end_w: 346
+      init_h: 304
+      init_s: 2774
+      init_w: 154
+    - end_h: 395
+      end_s: 1861
+      end_w: 210
+      init_h: 203
+      init_s: 1349
+      init_w: 18
+    - end_h: 426
+      end_s: 4514
+      end_w: 407
+      init_h: 234
+      init_s: 4002
+      init_w: 215
+    - end_h: 462
+      end_s: 553
+      end_w: 266
+      init_h: 270
+      init_s: 41
+      init_w: 74
+    - end_h: 365
+      end_s: 621
+      end_w: 274
+      init_h: 173
+      init_s: 109
+      init_w: 82
+    - end_h: 402
+      end_s: 4458
+      end_w: 484
+      init_h: 210
+      init_s: 3946
+      init_w: 292
+    - end_h: 334
+      end_s: 2703
+      end_w: 280
+      init_h: 142
+      init_s: 2191
+      init_w: 88
+    - end_h: 504
+      end_s: 4566
+      end_w: 475
+      init_h: 312
+      init_s: 4054
+      init_w: 283
+    - end_h: 192
+      end_s: 522
+      end_w: 505
+      init_h: 0
+      init_s: 10
+      init_w: 313
+    - end_h: 312
+      end_s: 1902
+      end_w: 544
+      init_h: 120
+      init_s: 1390
+      init_w: 352
+    - end_h: 318
+      end_s: 3944
+      end_w: 228
+      init_h: 126
+      init_s: 3432
+      init_w: 36
+    - end_h: 259
+      end_s: 2734
+      end_w: 293
+      init_h: 67
+      init_s: 2222
+      init_w: 101
+    - end_h: 477
+      end_s: 2345
+      end_w: 207
+      init_h: 285
+      init_s: 1833
+      init_w: 15
+    - end_h: 278
+      end_s: 2883
+      end_w: 450
+      init_h: 86
+      init_s: 2371
+      init_w: 258
+    - end_h: 315
+      end_s: 4122
+      end_w: 408
+      init_h: 123
+      init_s: 3610
+      init_w: 216
+    - end_h: 238
+      end_s: 4239
+      end_w: 215
+      init_h: 46
+      init_s: 3727
+      init_w: 23
+    - end_h: 436
+      end_s: 2332
+      end_w: 426
+      init_h: 244
+      init_s: 1820
+      init_w: 234
+    - end_h: 455
+      end_s: 1138
+      end_w: 414
+      init_h: 263
+      init_s: 626
+      init_w: 222
+    - end_h: 259
+      end_s: 4083
+      end_w: 293
+      init_h: 67
+      init_s: 3571
+      init_w: 101
+    - end_h: 473
+      end_s: 4228
+      end_w: 406
+      init_h: 281
+      init_s: 3716
+      init_w: 214
+    - end_h: 333
+      end_s: 2779
+      end_w: 347
+      init_h: 141
+      init_s: 2267
+      init_w: 155
+    - end_h: 298
+      end_s: 4394
+      end_w: 560
+      init_h: 106
+      init_s: 3882
+      init_w: 368
+    - end_h: 343
+      end_s: 3636
+      end_w: 258
+      init_h: 151
+      init_s: 3124
+      init_w: 66
+    - end_h: 273
+      end_s: 4494
+      end_w: 334
+      init_h: 81
+      init_s: 3982
+      init_w: 142
+    - end_h: 464
+      end_s: 3699
+      end_w: 426
+      init_h: 272
+      init_s: 3187
+      init_w: 234
+    - end_h: 408
+      end_s: 706
+      end_w: 318
+      init_h: 216
+      init_s: 194
+      init_w: 126
+    - end_h: 499
+      end_s: 3084
+      end_w: 226
+      init_h: 307
+      init_s: 2572
+      init_w: 34
+    - end_h: 458
+      end_s: 1194
+      end_w: 214
+      init_h: 266
+      init_s: 682
+      init_w: 22
+    - end_h: 446
+      end_s: 2863
+      end_w: 401
+      init_h: 254
+      init_s: 2351
+      init_w: 209
+    - end_h: 289
+      end_s: 4504
+      end_w: 533
+      init_h: 97
+      init_s: 3992
+      init_w: 341
+    - end_h: 402
+      end_s: 1253
+      end_w: 572
+      init_h: 210
+      init_s: 741
+      init_w: 380
+    - end_h: 224
+      end_s: 4723
+      end_w: 314
+      init_h: 32
+      init_s: 4211
+      init_w: 122
+    - end_h: 357
+      end_s: 3342
+      end_w: 582
+      init_h: 165
+      init_s: 2830
+      init_w: 390
+    - end_h: 353
+      end_s: 1431
+      end_w: 400
+      init_h: 161
+      init_s: 919
+      init_w: 208
+    - end_h: 386
+      end_s: 3262
+      end_w: 262
+      init_h: 194
+      init_s: 2750
+      init_w: 70
+    - end_h: 444
+      end_s: 3045
+      end_w: 222
+      init_h: 252
+      init_s: 2533
+      init_w: 30
+    - end_h: 354
+      end_s: 1341
+      end_w: 569
+      init_h: 162
+      init_s: 829
+      init_w: 377
+    - end_h: 270
+      end_s: 4236
+      end_w: 237
+      init_h: 78
+      init_s: 3724
+      init_w: 45
+    - end_h: 194
+      end_s: 4171
+      end_w: 230
+      init_h: 2
+      init_s: 3659
+      init_w: 38
+    - end_h: 369
+      end_s: 4847
+      end_w: 284
+      init_h: 177
+      init_s: 4335
+      init_w: 92
+    - end_h: 502
+      end_s: 670
+      end_w: 433
+      init_h: 310
+      init_s: 158
+      init_w: 241
+    - end_h: 231
+      end_s: 3463
+      end_w: 502
+      init_h: 39
+      init_s: 2951
+      init_w: 310
+    - end_h: 416
+      end_s: 2181
+      end_w: 224
+      init_h: 224
+      init_s: 1669
+      init_w: 32
+    - end_h: 390
+      end_s: 4554
+      end_w: 417
+      init_h: 198
+      init_s: 4042
+      init_w: 225
+    - end_h: 227
+      end_s: 3356
+      end_w: 392
+      init_h: 35
+      init_s: 2844
+      init_w: 200
+    - end_h: 436
+      end_s: 2047
+      end_w: 520
+      init_h: 244
+      init_s: 1535
+      init_w: 328
+    - end_h: 463
+      end_s: 2360
+      end_w: 517
+      init_h: 271
+      init_s: 1848
+      init_w: 325
+    - end_h: 298
+      end_s: 4612
+      end_w: 404
+      init_h: 106
+      init_s: 4100
+      init_w: 212
+    - end_h: 195
+      end_s: 1617
+      end_w: 247
+      init_h: 3
+      init_s: 1105
+      init_w: 55
+    - end_h: 306
+      end_s: 3553
+      end_w: 345
+      init_h: 114
+      init_s: 3041
+      init_w: 153
+    - end_h: 509
+      end_s: 4926
+      end_w: 205
+      init_h: 317
+      init_s: 4414
+      init_w: 13
+    - end_h: 253
+      end_s: 3144
+      end_w: 337
+      init_h: 61
+      init_s: 2632
+      init_w: 145
+    - end_h: 441
+      end_s: 1754
+      end_w: 370
+      init_h: 249
+      init_s: 1242
+      init_w: 178
+    - end_h: 358
+      end_s: 4709
+      end_w: 253
+      init_h: 166
+      init_s: 4197
+      init_w: 61
+    - end_h: 398
+      end_s: 869
+      end_w: 346
+      init_h: 206
+      init_s: 357
+      init_w: 154
+    - end_h: 455
+      end_s: 4285
+      end_w: 574
+      init_h: 263
+      init_s: 3773
+      init_w: 382
+    - end_h: 244
+      end_s: 4119
+      end_w: 247
+      init_h: 52
+      init_s: 3607
+      init_w: 55
+    - end_h: 295
+      end_s: 1866
+      end_w: 462
+      init_h: 103
+      init_s: 1354
+      init_w: 270
+    - end_h: 442
+      end_s: 4753
+      end_w: 425
+      init_h: 250
+      init_s: 4241
+      init_w: 233
+    - end_h: 502
+      end_s: 3286
+      end_w: 284
+      init_h: 310
+      init_s: 2774
+      init_w: 92
+    - end_h: 271
+      end_s: 1380
+      end_w: 572
+      init_h: 79
+      init_s: 868
+      init_w: 380
+    - end_h: 213
+      end_s: 890
+      end_w: 313
+      init_h: 21
+      init_s: 378
+      init_w: 121
+    - end_h: 481
+      end_s: 4699
+      end_w: 342
+      init_h: 289
+      init_s: 4187
+      init_w: 150
+    - end_h: 362
+      end_s: 2573
+      end_w: 217
+      init_h: 170
+      init_s: 2061
+      init_w: 25
+    - end_h: 353
+      end_s: 2166
+      end_w: 248
+      init_h: 161
+      init_s: 1654
+      init_w: 56
+    - end_h: 275
+      end_s: 2073
+      end_w: 342
+      init_h: 83
+      init_s: 1561
+      init_w: 150
+    - end_h: 500
+      end_s: 2239
+      end_w: 373
+      init_h: 308
+      init_s: 1727
+      init_w: 181
+    - end_h: 311
+      end_s: 2052
+      end_w: 262
+      init_h: 119
+      init_s: 1540
+      init_w: 70
+    - end_h: 365
+      end_s: 1042
+      end_w: 432
+      init_h: 173
+      init_s: 530
+      init_w: 240
+    - end_h: 355
+      end_s: 3576
+      end_w: 540
+      init_h: 163
+      init_s: 3064
+      init_w: 348
+    - end_h: 436
+      end_s: 1333
+      end_w: 444
+      init_h: 244
+      init_s: 821
+      init_w: 252
+    - end_h: 386
+      end_s: 3389
+      end_w: 390
+      init_h: 194
+      init_s: 2877
+      init_w: 198
+    - end_h: 389
+      end_s: 1994
+      end_w: 565
+      init_h: 197
+      init_s: 1482
+      init_w: 373
+    - end_h: 506
+      end_s: 3083
+      end_w: 312
+      init_h: 314
+      init_s: 2571
+      init_w: 120
+    - end_h: 423
+      end_s: 2026
+      end_w: 398
+      init_h: 231
+      init_s: 1514
+      init_w: 206
+    - end_h: 457
+      end_s: 3651
+      end_w: 529
+      init_h: 265
+      init_s: 3139
+      init_w: 337
+    - end_h: 224
+      end_s: 2036
+      end_w: 518
+      init_h: 32
+      init_s: 1524
+      init_w: 326
+    - end_h: 349
+      end_s: 2916
+      end_w: 248
+      init_h: 157
+      init_s: 2404
+      init_w: 56
+    - end_h: 327
+      end_s: 1324
+      end_w: 554
+      init_h: 135
+      init_s: 812
+      init_w: 362
+    - end_h: 221
+      end_s: 2787
+      end_w: 496
+      init_h: 29
+      init_s: 2275
+      init_w: 304
+    - end_h: 196
+      end_s: 1609
+      end_w: 267
+      init_h: 4
+      init_s: 1097
+      init_w: 75
+    - end_h: 394
+      end_s: 4147
+      end_w: 364
+      init_h: 202
+      init_s: 3635
+      init_w: 172
+    - end_h: 352
+      end_s: 816
+      end_w: 357
+      init_h: 160
+      init_s: 304
+      init_w: 165
+    - end_h: 206
+      end_s: 3251
+      end_w: 333
+      init_h: 14
+      init_s: 2739
+      init_w: 141
+    - end_h: 351
+      end_s: 4017
+      end_w: 322
+      init_h: 159
+      init_s: 3505
+      init_w: 130
+    - end_h: 210
+      end_s: 2740
+      end_w: 467
+      init_h: 18
+      init_s: 2228
+      init_w: 275
+    - end_h: 456
+      end_s: 4728
+      end_w: 537
+      init_h: 264
+      init_s: 4216
+      init_w: 345
+    - end_h: 431
+      end_s: 2430
+      end_w: 597
+      init_h: 239
+      init_s: 1918
+      init_w: 405
+    - end_h: 357
+      end_s: 2061
+      end_w: 249
+      init_h: 165
+      init_s: 1549
+      init_w: 57
+    - end_h: 354
+      end_s: 928
+      end_w: 599
+      init_h: 162
+      init_s: 416
+      init_w: 407
+    - end_h: 365
+      end_s: 2119
+      end_w: 320
+      init_h: 173
+      init_s: 1607
+      init_w: 128
+    - end_h: 501
+      end_s: 4881
+      end_w: 444
+      init_h: 309
+      init_s: 4369
+      init_w: 252
+    - end_h: 440
+      end_s: 991
+      end_w: 276
+      init_h: 248
+      init_s: 479
+      init_w: 84
+    - end_h: 208
+      end_s: 4976
+      end_w: 197
+      init_h: 16
+      init_s: 4464
+      init_w: 5
+    - end_h: 246
+      end_s: 3250
+      end_w: 298
+      init_h: 54
+      init_s: 2738
+      init_w: 106
+    - end_h: 256
+      end_s: 1802
+      end_w: 272
+      init_h: 64
+      init_s: 1290
+      init_w: 80
+    - end_h: 481
+      end_s: 607
+      end_w: 525
+      init_h: 289
+      init_s: 95
+      init_w: 333
+    - end_h: 227
+      end_s: 3344
+      end_w: 281
+      init_h: 35
+      init_s: 2832
+      init_w: 89
+    - end_h: 459
+      end_s: 1920
+      end_w: 324
+      init_h: 267
+      init_s: 1408
+      init_w: 132
+    - end_h: 481
+      end_s: 4184
+      end_w: 531
+      init_h: 289
+      init_s: 3672
+      init_w: 339
+    - end_h: 394
+      end_s: 3571
+      end_w: 571
+      init_h: 202
+      init_s: 3059
+      init_w: 379
+    - end_h: 198
+      end_s: 1035
+      end_w: 429
+      init_h: 6
+      init_s: 523
+      init_w: 237
+    - end_h: 303
+      end_s: 4893
+      end_w: 430
+      init_h: 111
+      init_s: 4381
+      init_w: 238
+    - end_h: 359
+      end_s: 616
+      end_w: 376
+      init_h: 167
+      init_s: 104
+      init_w: 184
+    - end_h: 382
+      end_s: 4707
+      end_w: 198
+      init_h: 190
+      init_s: 4195
+      init_w: 6
+    - end_h: 368
+      end_s: 1497
+      end_w: 589
+      init_h: 176
+      init_s: 985
+      init_w: 397
+    - end_h: 364
+      end_s: 1219
+      end_w: 424
+      init_h: 172
+      init_s: 707
+      init_w: 232
+    - end_h: 461
+      end_s: 4397
+      end_w: 240
+      init_h: 269
+      init_s: 3885
+      init_w: 48
+    - end_h: 462
+      end_s: 4550
+      end_w: 357
+      init_h: 270
+      init_s: 4038
+      init_w: 165
+    - end_h: 368
+      end_s: 892
+      end_w: 273
+      init_h: 176
+      init_s: 380
+      init_w: 81
+    - end_h: 404
+      end_s: 1061
+      end_w: 211
+      init_h: 212
+      init_s: 549
+      init_w: 19
+    - end_h: 431
+      end_s: 4588
+      end_w: 477
+      init_h: 239
+      init_s: 4076
+      init_w: 285
+    - end_h: 434
+      end_s: 1785
+      end_w: 497
+      init_h: 242
+      init_s: 1273
+      init_w: 305
+    - end_h: 209
+      end_s: 930
+      end_w: 291
+      init_h: 17
+      init_s: 418
+      init_w: 99
+    - end_h: 469
+      end_s: 2256
+      end_w: 445
+      init_h: 277
+      init_s: 1744
+      init_w: 253
+    - end_h: 450
+      end_s: 3065
+      end_w: 496
+      init_h: 258
+      init_s: 2553
+      init_w: 304
+    - end_h: 384
+      end_s: 3553
+      end_w: 402
+      init_h: 192
+      init_s: 3041
+      init_w: 210
+    - end_h: 292
+      end_s: 1081
+      end_w: 243
+      init_h: 100
+      init_s: 569
+      init_w: 51
+    - end_h: 408
+      end_s: 3969
+      end_w: 365
+      init_h: 216
+      init_s: 3457
+      init_w: 173
+    - end_h: 223
+      end_s: 3412
+      end_w: 452
+      init_h: 31
+      init_s: 2900
+      init_w: 260
+    - end_h: 432
+      end_s: 4764
+      end_w: 452
+      init_h: 240
+      init_s: 4252
+      init_w: 260
+    - end_h: 461
+      end_s: 2385
+      end_w: 587
+      init_h: 269
+      init_s: 1873
+      init_w: 395
+    - end_h: 496
+      end_s: 4436
+      end_w: 261
+      init_h: 304
+      init_s: 3924
+      init_w: 69
+    - end_h: 402
+      end_s: 3359
+      end_w: 582
+      init_h: 210
+      init_s: 2847
+      init_w: 390
+    - end_h: 286
+      end_s: 4754
+      end_w: 260
+      init_h: 94
+      init_s: 4242
+      init_w: 68
+    - end_h: 275
+      end_s: 4686
+      end_w: 249
+      init_h: 83
+      init_s: 4174
+      init_w: 57
+    - end_h: 301
+      end_s: 1924
+      end_w: 207
+      init_h: 109
+      init_s: 1412
+      init_w: 15
+    - end_h: 373
+      end_s: 3886
+      end_w: 328
+      init_h: 181
+      init_s: 3374
+      init_w: 136
+    - end_h: 211
+      end_s: 4264
+      end_w: 341
+      init_h: 19
+      init_s: 3752
+      init_w: 149
+    - end_h: 372
+      end_s: 2299
+      end_w: 282
+      init_h: 180
+      init_s: 1787
+      init_w: 90
+    - end_h: 264
+      end_s: 2534
+      end_w: 533
+      init_h: 72
+      init_s: 2022
+      init_w: 341
+    - end_h: 369
+      end_s: 2874
+      end_w: 265
+      init_h: 177
+      init_s: 2362
+      init_w: 73
+    - end_h: 292
+      end_s: 798
+      end_w: 206
+      init_h: 100
+      init_s: 286
+      init_w: 14
+    - end_h: 338
+      end_s: 903
+      end_w: 506
+      init_h: 146
+      init_s: 391
+      init_w: 314
+    - end_h: 201
+      end_s: 1729
+      end_w: 559
+      init_h: 9
+      init_s: 1217
+      init_w: 367
+    - end_h: 352
+      end_s: 2625
+      end_w: 308
+      init_h: 160
+      init_s: 2113
+      init_w: 116
+    - end_h: 327
+      end_s: 2925
+      end_w: 210
+      init_h: 135
+      init_s: 2413
+      init_w: 18
+    - end_h: 223
+      end_s: 1274
+      end_w: 418
+      init_h: 31
+      init_s: 762
+      init_w: 226
+    - end_h: 237
+      end_s: 904
+      end_w: 291
+      init_h: 45
+      init_s: 392
+      init_w: 99
+    - end_h: 445
+      end_s: 2322
+      end_w: 365
+      init_h: 253
+      init_s: 1810
+      init_w: 173
+    - end_h: 429
+      end_s: 840
+      end_w: 583
+      init_h: 237
+      init_s: 328
+      init_w: 391
+    - end_h: 377
+      end_s: 837
+      end_w: 580
+      init_h: 185
+      init_s: 325
+      init_w: 388
+    - end_h: 302
+      end_s: 4536
+      end_w: 241
+      init_h: 110
+      init_s: 4024
+      init_w: 49
+    - end_h: 216
+      end_s: 4444
+      end_w: 528
+      init_h: 24
+      init_s: 3932
+      init_w: 336
+    - end_h: 424
+      end_s: 1462
+      end_w: 382
+      init_h: 232
+      init_s: 950
+      init_w: 190
+    - end_h: 271
+      end_s: 1591
+      end_w: 454
+      init_h: 79
+      init_s: 1079
+      init_w: 262
+    - end_h: 411
+      end_s: 908
+      end_w: 385
+      init_h: 219
+      init_s: 396
+      init_w: 193
+    - end_h: 466
+      end_s: 2702
+      end_w: 248
+      init_h: 274
+      init_s: 2190
+      init_w: 56
+    - end_h: 236
+      end_s: 2897
+      end_w: 509
+      init_h: 44
+      init_s: 2385
+      init_w: 317
+    - end_h: 346
+      end_s: 2837
+      end_w: 458
+      init_h: 154
+      init_s: 2325
+      init_w: 266
+    - end_h: 510
+      end_s: 1406
+      end_w: 237
+      init_h: 318
+      init_s: 894
+      init_w: 45
+    - end_h: 503
+      end_s: 3836
+      end_w: 265
+      init_h: 311
+      init_s: 3324
+      init_w: 73
+    - end_h: 438
+      end_s: 4011
+      end_w: 286
+      init_h: 246
+      init_s: 3499
+      init_w: 94
+    - end_h: 199
+      end_s: 3433
+      end_w: 217
+      init_h: 7
+      init_s: 2921
+      init_w: 25
+    - end_h: 431
+      end_s: 4037
+      end_w: 370
+      init_h: 239
+      init_s: 3525
+      init_w: 178
+    - end_h: 502
+      end_s: 4205
+      end_w: 241
+      init_h: 310
+      init_s: 3693
+      init_w: 49
+    - end_h: 264
+      end_s: 3993
+      end_w: 338
+      init_h: 72
+      init_s: 3481
+      init_w: 146
+    - end_h: 261
+      end_s: 4962
+      end_w: 404
+      init_h: 69
+      init_s: 4450
+      init_w: 212
+    - end_h: 444
+      end_s: 4805
+      end_w: 463
+      init_h: 252
+      init_s: 4293
+      init_w: 271
+    - end_h: 290
+      end_s: 1489
+      end_w: 436
+      init_h: 98
+      init_s: 977
+      init_w: 244
+    - end_h: 462
+      end_s: 2427
+      end_w: 306
+      init_h: 270
+      init_s: 1915
+      init_w: 114
+    - end_h: 452
+      end_s: 1066
+      end_w: 463
+      init_h: 260
+      init_s: 554
+      init_w: 271
+    - end_h: 352
+      end_s: 1934
+      end_w: 436
+      init_h: 160
+      init_s: 1422
+      init_w: 244
+    - end_h: 304
+      end_s: 1822
+      end_w: 215
+      init_h: 112
+      init_s: 1310
+      init_w: 23
+    - end_h: 381
+      end_s: 2405
+      end_w: 425
+      init_h: 189
+      init_s: 1893
+      init_w: 233
+    - end_h: 415
+      end_s: 918
+      end_w: 585
+      init_h: 223
+      init_s: 406
+      init_w: 393
+    - end_h: 309
+      end_s: 2413
+      end_w: 218
+      init_h: 117
+      init_s: 1901
+      init_w: 26
+    - end_h: 279
+      end_s: 1819
+      end_w: 311
+      init_h: 87
+      init_s: 1307
+      init_w: 119
+    - end_h: 384
+      end_s: 4107
+      end_w: 510
+      init_h: 192
+      init_s: 3595
+      init_w: 318
+    - end_h: 464
+      end_s: 3370
+      end_w: 554
+      init_h: 272
+      init_s: 2858
+      init_w: 362
+    - end_h: 359
+      end_s: 4599
+      end_w: 226
+      init_h: 167
+      init_s: 4087
+      init_w: 34
+    - end_h: 337
+      end_s: 1126
+      end_w: 360
+      init_h: 145
+      init_s: 614
+      init_w: 168
+    - end_h: 303
+      end_s: 3655
+      end_w: 213
+      init_h: 111
+      init_s: 3143
+      init_w: 21
+    - end_h: 383
+      end_s: 2173
+      end_w: 539
+      init_h: 191
+      init_s: 1661
+      init_w: 347
+    - end_h: 345
+      end_s: 3043
+      end_w: 292
+      init_h: 153
+      init_s: 2531
+      init_w: 100
+    - end_h: 435
+      end_s: 1929
+      end_w: 552
+      init_h: 243
+      init_s: 1417
+      init_w: 360
+    - end_h: 491
+      end_s: 4781
+      end_w: 393
+      init_h: 299
+      init_s: 4269
+      init_w: 201
+    - end_h: 458
+      end_s: 4923
+      end_w: 388
+      init_h: 266
+      init_s: 4411
+      init_w: 196
+    - end_h: 448
+      end_s: 2279
+      end_w: 359
+      init_h: 256
+      init_s: 1767
+      init_w: 167
+    - end_h: 218
+      end_s: 2821
+      end_w: 516
+      init_h: 26
+      init_s: 2309
+      init_w: 324
+    - end_h: 212
+      end_s: 874
+      end_w: 453
+      init_h: 20
+      init_s: 362
+      init_w: 261
+    - end_h: 348
+      end_s: 1299
+      end_w: 543
+      init_h: 156
+      init_s: 787
+      init_w: 351
+    - end_h: 244
+      end_s: 3714
+      end_w: 195
+      init_h: 52
+      init_s: 3202
+      init_w: 3
+    - end_h: 447
+      end_s: 1672
+      end_w: 405
+      init_h: 255
+      init_s: 1160
+      init_w: 213
+    - end_h: 214
+      end_s: 2365
+      end_w: 250
+      init_h: 22
+      init_s: 1853
+      init_w: 58
+    - end_h: 308
+      end_s: 4892
+      end_w: 341
+      init_h: 116
+      init_s: 4380
+      init_w: 149
+    - end_h: 437
+      end_s: 1429
+      end_w: 507
+      init_h: 245
+      init_s: 917
+      init_w: 315
+    - end_h: 227
+      end_s: 1590
+      end_w: 296
+      init_h: 35
+      init_s: 1078
+      init_w: 104
+    - end_h: 441
+      end_s: 974
+      end_w: 572
+      init_h: 249
+      init_s: 462
+      init_w: 380
+    - end_h: 323
+      end_s: 2189
+      end_w: 562
+      init_h: 131
+      init_s: 1677
+      init_w: 370
+    - end_h: 413
+      end_s: 3993
+      end_w: 199
+      init_h: 221
+      init_s: 3481
+      init_w: 7
+    - end_h: 302
+      end_s: 3859
+      end_w: 304
+      init_h: 110
+      init_s: 3347
+      init_w: 112
+    - end_h: 308
+      end_s: 4159
+      end_w: 203
+      init_h: 116
+      init_s: 3647
+      init_w: 11
+    - end_h: 407
+      end_s: 3730
+      end_w: 493
+      init_h: 215
+      init_s: 3218
+      init_w: 301
+    - end_h: 401
+      end_s: 4584
+      end_w: 561
+      init_h: 209
+      init_s: 4072
+      init_w: 369
+    - end_h: 446
+      end_s: 3158
+      end_w: 530
+      init_h: 254
+      init_s: 2646
+      init_w: 338
+    - end_h: 322
+      end_s: 4762
+      end_w: 415
+      init_h: 130
+      init_s: 4250
+      init_w: 223
+    - end_h: 363
+      end_s: 4136
+      end_w: 264
+      init_h: 171
+      init_s: 3624
+      init_w: 72
+    - end_h: 279
+      end_s: 924
+      end_w: 204
+      init_h: 87
+      init_s: 412
+      init_w: 12
+    - end_h: 436
+      end_s: 1507
+      end_w: 428
+      init_h: 244
+      init_s: 995
+      init_w: 236
+    - end_h: 257
+      end_s: 1933
+      end_w: 251
+      init_h: 65
+      init_s: 1421
+      init_w: 59
+    - end_h: 376
+      end_s: 1048
+      end_w: 436
+      init_h: 184
+      init_s: 536
+      init_w: 244
+    - end_h: 426
+      end_s: 2608
+      end_w: 480
+      init_h: 234
+      init_s: 2096
+      init_w: 288
+    - end_h: 224
+      end_s: 3432
+      end_w: 356
+      init_h: 32
+      init_s: 2920
+      init_w: 164
+    - end_h: 243
+      end_s: 819
+      end_w: 314
+      init_h: 51
+      init_s: 307
+      init_w: 122
+    - end_h: 282
+      end_s: 3924
+      end_w: 269
+      init_h: 90
+      init_s: 3412
+      init_w: 77
+    - end_h: 379
+      end_s: 3552
+      end_w: 240
+      init_h: 187
+      init_s: 3040
+      init_w: 48
+    - end_h: 504
+      end_s: 1963
+      end_w: 436
+      init_h: 312
+      init_s: 1451
+      init_w: 244
+    - end_h: 494
+      end_s: 4089
+      end_w: 229
+      init_h: 302
+      init_s: 3577
+      init_w: 37
+    - end_h: 454
+      end_s: 3233
+      end_w: 279
+      init_h: 262
+      init_s: 2721
+      init_w: 87
+    - end_h: 418
+      end_s: 2943
+      end_w: 594
+      init_h: 226
+      init_s: 2431
+      init_w: 402
+    - end_h: 376
+      end_s: 3183
+      end_w: 207
+      init_h: 184
+      init_s: 2671
+      init_w: 15
+    - end_h: 469
+      end_s: 1235
+      end_w: 192
+      init_h: 277
+      init_s: 723
+      init_w: 0
+    - end_h: 382
+      end_s: 3964
+      end_w: 226
+      init_h: 190
+      init_s: 3452
+      init_w: 34
+    - end_h: 282
+      end_s: 845
+      end_w: 465
+      init_h: 90
+      init_s: 333
+      init_w: 273
+    - end_h: 510
+      end_s: 1738
+      end_w: 280
+      init_h: 318
+      init_s: 1226
+      init_w: 88
+    - end_h: 501
+      end_s: 2935
+      end_w: 527
+      init_h: 309
+      init_s: 2423
+      init_w: 335
+    - end_h: 450
+      end_s: 2019
+      end_w: 331
+      init_h: 258
+      init_s: 1507
+      init_w: 139
+    - end_h: 217
+      end_s: 2081
+      end_w: 323
+      init_h: 25
+      init_s: 1569
+      init_w: 131
+    - end_h: 473
+      end_s: 3816
+      end_w: 416
+      init_h: 281
+      init_s: 3304
+      init_w: 224
+    - end_h: 308
+      end_s: 1132
+      end_w: 256
+      init_h: 116
+      init_s: 620
+      init_w: 64
+    - end_h: 456
+      end_s: 3965
+      end_w: 531
+      init_h: 264
+      init_s: 3453
+      init_w: 339
+    - end_h: 370
+      end_s: 1169
+      end_w: 476
+      init_h: 178
+      init_s: 657
+      init_w: 284
+    - end_h: 300
+      end_s: 3422
+      end_w: 463
+      init_h: 108
+      init_s: 2910
+      init_w: 271
+    - end_h: 491
+      end_s: 819
+      end_w: 199
+      init_h: 299
+      init_s: 307
+      init_w: 7
+    - end_h: 439
+      end_s: 4665
+      end_w: 366
+      init_h: 247
+      init_s: 4153
+      init_w: 174
+    - end_h: 216
+      end_s: 4687
+      end_w: 444
+      init_h: 24
+      init_s: 4175
+      init_w: 252
+    - end_h: 461
+      end_s: 2471
+      end_w: 218
+      init_h: 269
+      init_s: 1959
+      init_w: 26
+    - end_h: 365
+      end_s: 2738
+      end_w: 571
+      init_h: 173
+      init_s: 2226
+      init_w: 379
+    - end_h: 490
+      end_s: 1813
+      end_w: 390
+      init_h: 298
+      init_s: 1301
+      init_w: 198
+    - end_h: 354
+      end_s: 3617
+      end_w: 474
+      init_h: 162
+      init_s: 3105
+      init_w: 282
+    - end_h: 209
+      end_s: 1153
+      end_w: 507
+      init_h: 17
+      init_s: 641
+      init_w: 315
+    - end_h: 405
+      end_s: 4886
+      end_w: 497
+      init_h: 213
+      init_s: 4374
+      init_w: 305
+    - end_h: 369
+      end_s: 1148
+      end_w: 501
+      init_h: 177
+      init_s: 636
+      init_w: 309
+    - end_h: 417
+      end_s: 3232
+      end_w: 353
+      init_h: 225
+      init_s: 2720
+      init_w: 161
+    - end_h: 249
+      end_s: 2088
+      end_w: 468
+      init_h: 57
+      init_s: 1576
+      init_w: 276
+    - end_h: 457
+      end_s: 1772
+      end_w: 499
+      init_h: 265
+      init_s: 1260
+      init_w: 307
+    - end_h: 325
+      end_s: 4459
+      end_w: 359
+      init_h: 133
+      init_s: 3947
+      init_w: 167
+    - end_h: 323
+      end_s: 4936
+      end_w: 436
+      init_h: 131
+      init_s: 4424
+      init_w: 244
+    - end_h: 308
+      end_s: 4063
+      end_w: 214
+      init_h: 116
+      init_s: 3551
+      init_w: 22
+    - end_h: 423
+      end_s: 1543
+      end_w: 519
+      init_h: 231
+      init_s: 1031
+      init_w: 327
+    - end_h: 240
+      end_s: 2593
+      end_w: 271
+      init_h: 48
+      init_s: 2081
+      init_w: 79
+    - end_h: 500
+      end_s: 2550
+      end_w: 272
+      init_h: 308
+      init_s: 2038
+      init_w: 80
+    - end_h: 204
+      end_s: 1744
+      end_w: 393
+      init_h: 12
+      init_s: 1232
+      init_w: 201
+    - end_h: 316
+      end_s: 2056
+      end_w: 383
+      init_h: 124
+      init_s: 1544
+      init_w: 191
+    - end_h: 414
+      end_s: 2949
+      end_w: 342
+      init_h: 222
+      init_s: 2437
+      init_w: 150
+    - end_h: 416
+      end_s: 1781
+      end_w: 425
+      init_h: 224
+      init_s: 1269
+      init_w: 233
+    - end_h: 409
+      end_s: 1520
+      end_w: 328
+      init_h: 217
+      init_s: 1008
+      init_w: 136
+    - end_h: 226
+      end_s: 1249
+      end_w: 212
+      init_h: 34
+      init_s: 737
+      init_w: 20
+    - end_h: 241
+      end_s: 904
+      end_w: 216
+      init_h: 49
+      init_s: 392
+      init_w: 24
+    - end_h: 285
+      end_s: 1922
+      end_w: 592
+      init_h: 93
+      init_s: 1410
+      init_w: 400
+    - end_h: 445
+      end_s: 1727
+      end_w: 353
+      init_h: 253
+      init_s: 1215
+      init_w: 161
+    - end_h: 360
+      end_s: 3178
+      end_w: 444
+      init_h: 168
+      init_s: 2666
+      init_w: 252
+    - end_h: 464
+      end_s: 3817
+      end_w: 564
+      init_h: 272
+      init_s: 3305
+      init_w: 372
+    - end_h: 468
+      end_s: 3747
+      end_w: 521
+      init_h: 276
+      init_s: 3235
+      init_w: 329
+    - end_h: 314
+      end_s: 4159
+      end_w: 582
+      init_h: 122
+      init_s: 3647
+      init_w: 390
+    - end_h: 327
+      end_s: 2583
+      end_w: 522
+      init_h: 135
+      init_s: 2071
+      init_w: 330
+    - end_h: 382
+      end_s: 4466
+      end_w: 359
+      init_h: 190
+      init_s: 3954
+      init_w: 167
+    - end_h: 297
+      end_s: 3813
+      end_w: 527
+      init_h: 105
+      init_s: 3301
+      init_w: 335
+    - end_h: 203
+      end_s: 3336
+      end_w: 437
+      init_h: 11
+      init_s: 2824
+      init_w: 245
+    - end_h: 401
+      end_s: 2433
+      end_w: 505
+      init_h: 209
+      init_s: 1921
+      init_w: 313
+    - end_h: 333
+      end_s: 812
+      end_w: 315
+      init_h: 141
+      init_s: 300
+      init_w: 123
+    - end_h: 366
+      end_s: 3179
+      end_w: 555
+      init_h: 174
+      init_s: 2667
+      init_w: 363
+    - end_h: 394
+      end_s: 2204
+      end_w: 311
+      init_h: 202
+      init_s: 1692
+      init_w: 119
+    - end_h: 210
+      end_s: 2445
+      end_w: 192
+      init_h: 18
+      init_s: 1933
+      init_w: 0
+    - end_h: 397
+      end_s: 1715
+      end_w: 487
+      init_h: 205
+      init_s: 1203
+      init_w: 295
+    - end_h: 447
+      end_s: 3662
+      end_w: 308
+      init_h: 255
+      init_s: 3150
+      init_w: 116
+    - end_h: 461
+      end_s: 3764
+      end_w: 302
+      init_h: 269
+      init_s: 3252
+      init_w: 110
+    - end_h: 264
+      end_s: 2210
+      end_w: 495
+      init_h: 72
+      init_s: 1698
+      init_w: 303
+    - end_h: 404
+      end_s: 779
+      end_w: 359
+      init_h: 212
+      init_s: 267
+      init_w: 167
+    - end_h: 489
+      end_s: 1499
+      end_w: 360
+      init_h: 297
+      init_s: 987
+      init_w: 168
+    - end_h: 259
+      end_s: 1584
+      end_w: 596
+      init_h: 67
+      init_s: 1072
+      init_w: 404
+    - end_h: 343
+      end_s: 1966
+      end_w: 357
+      init_h: 151
+      init_s: 1454
+      init_w: 165
+    - end_h: 300
+      end_s: 704
+      end_w: 323
+      init_h: 108
+      init_s: 192
+      init_w: 131
+    - end_h: 284
+      end_s: 2879
+      end_w: 545
+      init_h: 92
+      init_s: 2367
+      init_w: 353
+    - end_h: 261
+      end_s: 1346
+      end_w: 555
+      init_h: 69
+      init_s: 834
+      init_w: 363
+    - end_h: 324
+      end_s: 1471
+      end_w: 566
+      init_h: 132
+      init_s: 959
+      init_w: 374
+    - end_h: 245
+      end_s: 3383
+      end_w: 333
+      init_h: 53
+      init_s: 2871
+      init_w: 141
+    - end_h: 311
+      end_s: 3348
+      end_w: 480
+      init_h: 119
+      init_s: 2836
+      init_w: 288
+    - end_h: 285
+      end_s: 3337
+      end_w: 349
+      init_h: 93
+      init_s: 2825
+      init_w: 157
+    - end_h: 421
+      end_s: 1617
+      end_w: 292
+      init_h: 229
+      init_s: 1105
+      init_w: 100
+    - end_h: 466
+      end_s: 3562
+      end_w: 283
+      init_h: 274
+      init_s: 3050
+      init_w: 91
+    - end_h: 391
+      end_s: 606
+      end_w: 380
+      init_h: 199
+      init_s: 94
+      init_w: 188
+    - end_h: 203
+      end_s: 3267
+      end_w: 301
+      init_h: 11
+      init_s: 2755
+      init_w: 109
+    - end_h: 439
+      end_s: 1242
+      end_w: 513
+      init_h: 247
+      init_s: 730
+      init_w: 321
+    - end_h: 293
+      end_s: 3660
+      end_w: 290
+      init_h: 101
+      init_s: 3148
+      init_w: 98
+    - end_h: 378
+      end_s: 1920
+      end_w: 572
+      init_h: 186
+      init_s: 1408
+      init_w: 380
+    - end_h: 367
+      end_s: 4616
+      end_w: 369
+      init_h: 175
+      init_s: 4104
+      init_w: 177
+    - end_h: 416
+      end_s: 2774
+      end_w: 433
+      init_h: 224
+      init_s: 2262
+      init_w: 241
+    - end_h: 240
+      end_s: 3696
+      end_w: 496
+      init_h: 48
+      init_s: 3184
+      init_w: 304
+    - end_h: 396
+      end_s: 1150
+      end_w: 443
+      init_h: 204
+      init_s: 638
+      init_w: 251
+    - end_h: 372
+      end_s: 2722
+      end_w: 215
+      init_h: 180
+      init_s: 2210
+      init_w: 23
+    - end_h: 270
+      end_s: 4403
+      end_w: 322
+      init_h: 78
+      init_s: 3891
+      init_w: 130
+    - end_h: 391
+      end_s: 1261
+      end_w: 416
+      init_h: 199
+      init_s: 749
+      init_w: 224
+    - end_h: 419
+      end_s: 4279
+      end_w: 576
+      init_h: 227
+      init_s: 3767
+      init_w: 384
+    - end_h: 373
+      end_s: 4647
+      end_w: 252
+      init_h: 181
+      init_s: 4135
+      init_w: 60
+    - end_h: 467
+      end_s: 594
+      end_w: 281
+      init_h: 275
+      init_s: 82
+      init_w: 89
+    - end_h: 303
+      end_s: 1309
+      end_w: 348
+      init_h: 111
+      init_s: 797
+      init_w: 156
+    - end_h: 267
+      end_s: 1005
+      end_w: 458
+      init_h: 75
+      init_s: 493
+      init_w: 266
+    - end_h: 408
+      end_s: 3843
+      end_w: 379
+      init_h: 216
+      init_s: 3331
+      init_w: 187
+    - end_h: 328
+      end_s: 4384
+      end_w: 591
+      init_h: 136
+      init_s: 3872
+      init_w: 399
+    - end_h: 347
+      end_s: 1510
+      end_w: 446
+      init_h: 155
+      init_s: 998
+      init_w: 254
+    - end_h: 272
+      end_s: 3161
+      end_w: 406
+      init_h: 80
+      init_s: 2649
+      init_w: 214
+    - end_h: 413
+      end_s: 1916
+      end_w: 493
+      init_h: 221
+      init_s: 1404
+      init_w: 301
+    - end_h: 415
+      end_s: 799
+      end_w: 506
+      init_h: 223
+      init_s: 287
+      init_w: 314
+    - end_h: 239
+      end_s: 3580
+      end_w: 490
+      init_h: 47
+      init_s: 3068
+      init_w: 298
+    - end_h: 293
+      end_s: 2566
+      end_w: 461
+      init_h: 101
+      init_s: 2054
+      init_w: 269
+    - end_h: 487
+      end_s: 3514
+      end_w: 340
+      init_h: 295
+      init_s: 3002
+      init_w: 148
+    - end_h: 457
+      end_s: 2996
+      end_w: 366
+      init_h: 265
+      init_s: 2484
+      init_w: 174
+    - end_h: 465
+      end_s: 798
+      end_w: 592
+      init_h: 273
+      init_s: 286
+      init_w: 400
+    - end_h: 339
+      end_s: 4597
+      end_w: 359
+      init_h: 147
+      init_s: 4085
+      init_w: 167
+    - end_h: 266
+      end_s: 2848
+      end_w: 336
+      init_h: 74
+      init_s: 2336
+      init_w: 144
+    - end_h: 238
+      end_s: 3084
+      end_w: 279
+      init_h: 46
+      init_s: 2572
+      init_w: 87
+    - end_h: 395
+      end_s: 4358
+      end_w: 388
+      init_h: 203
+      init_s: 3846
+      init_w: 196
+    - end_h: 448
+      end_s: 1059
+      end_w: 341
+      init_h: 256
+      init_s: 547
+      init_w: 149
+    - end_h: 319
+      end_s: 1012
+      end_w: 199
+      init_h: 127
+      init_s: 500
+      init_w: 7
+    - end_h: 404
+      end_s: 2879
+      end_w: 445
+      init_h: 212
+      init_s: 2367
+      init_w: 253
+    - end_h: 460
+      end_s: 4553
+      end_w: 218
+      init_h: 268
+      init_s: 4041
+      init_w: 26
+    - end_h: 405
+      end_s: 1442
+      end_w: 490
+      init_h: 213
+      init_s: 930
+      init_w: 298
+    - end_h: 295
+      end_s: 2313
+      end_w: 357
+      init_h: 103
+      init_s: 1801
+      init_w: 165
+    - end_h: 485
+      end_s: 2849
+      end_w: 585
+      init_h: 293
+      init_s: 2337
+      init_w: 393
+    - end_h: 474
+      end_s: 1345
+      end_w: 331
+      init_h: 282
+      init_s: 833
+      init_w: 139
+    - end_h: 495
+      end_s: 1868
+      end_w: 436
+      init_h: 303
+      init_s: 1356
+      init_w: 244
+    - end_h: 217
+      end_s: 698
+      end_w: 519
+      init_h: 25
+      init_s: 186
+      init_w: 327
+    - end_h: 282
+      end_s: 4826
+      end_w: 474
+      init_h: 90
+      init_s: 4314
+      init_w: 282
+    - end_h: 435
+      end_s: 2394
+      end_w: 349
+      init_h: 243
+      init_s: 1882
+      init_w: 157
+    - end_h: 193
+      end_s: 3682
+      end_w: 407
+      init_h: 1
+      init_s: 3170
+      init_w: 215
+    - end_h: 290
+      end_s: 4401
+      end_w: 273
+      init_h: 98
+      init_s: 3889
+      init_w: 81
+    - end_h: 252
+      end_s: 979
+      end_w: 443
+      init_h: 60
+      init_s: 467
+      init_w: 251
+    - end_h: 383
+      end_s: 3847
+      end_w: 354
+      init_h: 191
+      init_s: 3335
+      init_w: 162
+    - end_h: 362
+      end_s: 3935
+      end_w: 264
+      init_h: 170
+      init_s: 3423
+      init_w: 72
+    - end_h: 451
+      end_s: 1578
+      end_w: 562
+      init_h: 259
+      init_s: 1066
+      init_w: 370
+    - end_h: 498
+      end_s: 2891
+      end_w: 306
+      init_h: 306
+      init_s: 2379
+      init_w: 114
+    - end_h: 369
+      end_s: 4670
+      end_w: 542
+      init_h: 177
+      init_s: 4158
+      init_w: 350
+    - end_h: 452
+      end_s: 3410
+      end_w: 285
+      init_h: 260
+      init_s: 2898
+      init_w: 93
+    - end_h: 264
+      end_s: 1551
+      end_w: 331
+      init_h: 72
+      init_s: 1039
+      init_w: 139
+    - end_h: 284
+      end_s: 3842
+      end_w: 378
+      init_h: 92
+      init_s: 3330
+      init_w: 186
+    - end_h: 479
+      end_s: 3354
+      end_w: 572
+      init_h: 287
+      init_s: 2842
+      init_w: 380
+    - end_h: 226
+      end_s: 4427
+      end_w: 230
+      init_h: 34
+      init_s: 3915
+      init_w: 38
+    - end_h: 239
+      end_s: 1824
+      end_w: 225
+      init_h: 47
+      init_s: 1312
+      init_w: 33
+    - end_h: 264
+      end_s: 1958
+      end_w: 395
+      init_h: 72
+      init_s: 1446
+      init_w: 203
+    - end_h: 506
+      end_s: 3179
+      end_w: 414
+      init_h: 314
+      init_s: 2667
+      init_w: 222
+    - end_h: 405
+      end_s: 3043
+      end_w: 562
+      init_h: 213
+      init_s: 2531
+      init_w: 370
+    - end_h: 378
+      end_s: 2059
+      end_w: 480
+      init_h: 186
+      init_s: 1547
+      init_w: 288
+    - end_h: 428
+      end_s: 4991
+      end_w: 380
+      init_h: 236
+      init_s: 4479
+      init_w: 188
+    - end_h: 195
+      end_s: 1092
+      end_w: 247
+      init_h: 3
+      init_s: 580
+      init_w: 55
+    - end_h: 220
+      end_s: 1785
+      end_w: 261
+      init_h: 28
+      init_s: 1273
+      init_w: 69
+    - end_h: 324
+      end_s: 2889
+      end_w: 284
+      init_h: 132
+      init_s: 2377
+      init_w: 92
+    - end_h: 316
+      end_s: 1449
+      end_w: 576
+      init_h: 124
+      init_s: 937
+      init_w: 384
+    - end_h: 297
+      end_s: 2351
+      end_w: 372
+      init_h: 105
+      init_s: 1839
+      init_w: 180
+    - end_h: 359
+      end_s: 1442
+      end_w: 288
+      init_h: 167
+      init_s: 930
+      init_w: 96
+    - end_h: 289
+      end_s: 4130
+      end_w: 192
+      init_h: 97
+      init_s: 3618
+      init_w: 0
+    - end_h: 243
+      end_s: 2896
+      end_w: 533
+      init_h: 51
+      init_s: 2384
+      init_w: 341
+    - end_h: 397
+      end_s: 679
+      end_w: 599
+      init_h: 205
+      init_s: 167
+      init_w: 407
+    - end_h: 381
+      end_s: 1683
+      end_w: 248
+      init_h: 189
+      init_s: 1171
+      init_w: 56
+    - end_h: 480
+      end_s: 1854
+      end_w: 341
+      init_h: 288
+      init_s: 1342
+      init_w: 149
+    - end_h: 344
+      end_s: 4633
+      end_w: 533
+      init_h: 152
+      init_s: 4121
+      init_w: 341
+    - end_h: 422
+      end_s: 3672
+      end_w: 436
+      init_h: 230
+      init_s: 3160
+      init_w: 244
+    - end_h: 236
+      end_s: 3955
+      end_w: 579
+      init_h: 44
+      init_s: 3443
+      init_w: 387
+    - end_h: 485
+      end_s: 1683
+      end_w: 487
+      init_h: 293
+      init_s: 1171
+      init_w: 295
+    - end_h: 313
+      end_s: 2795
+      end_w: 347
+      init_h: 121
+      init_s: 2283
+      init_w: 155
+    - end_h: 345
+      end_s: 3936
+      end_w: 574
+      init_h: 153
+      init_s: 3424
+      init_w: 382
+    - end_h: 200
+      end_s: 2148
+      end_w: 383
+      init_h: 8
+      init_s: 1636
+      init_w: 191
+    - end_h: 393
+      end_s: 4678
+      end_w: 387
+      init_h: 201
+      init_s: 4166
+      init_w: 195
+    - end_h: 332
+      end_s: 4483
+      end_w: 368
+      init_h: 140
+      init_s: 3971
+      init_w: 176
+    - end_h: 309
+      end_s: 3968
+      end_w: 439
+      init_h: 117
+      init_s: 3456
+      init_w: 247
+    - end_h: 457
+      end_s: 3769
+      end_w: 546
+      init_h: 265
+      init_s: 3257
+      init_w: 354
+    - end_h: 484
+      end_s: 2562
+      end_w: 521
+      init_h: 292
+      init_s: 2050
+      init_w: 329
+    - end_h: 408
+      end_s: 4329
+      end_w: 202
+      init_h: 216
+      init_s: 3817
+      init_w: 10
+    - end_h: 346
+      end_s: 1161
+      end_w: 458
+      init_h: 154
+      init_s: 649
+      init_w: 266
+    - end_h: 429
+      end_s: 1733
+      end_w: 199
+      init_h: 237
+      init_s: 1221
+      init_w: 7
+    - end_h: 384
+      end_s: 1288
+      end_w: 501
+      init_h: 192
+      init_s: 776
+      init_w: 309
+    - end_h: 417
+      end_s: 1004
+      end_w: 369
+      init_h: 225
+      init_s: 492
+      init_w: 177
+    - end_h: 396
+      end_s: 2672
+      end_w: 493
+      init_h: 204
+      init_s: 2160
+      init_w: 301
+    - end_h: 378
+      end_s: 1629
+      end_w: 443
+      init_h: 186
+      init_s: 1117
+      init_w: 251
+    - end_h: 238
+      end_s: 3685
+      end_w: 223
+      init_h: 46
+      init_s: 3173
+      init_w: 31
+    - end_h: 344
+      end_s: 1360
+      end_w: 411
+      init_h: 152
+      init_s: 848
+      init_w: 219
+    - end_h: 301
+      end_s: 1759
+      end_w: 429
+      init_h: 109
+      init_s: 1247
+      init_w: 237
+    - end_h: 259
+      end_s: 2888
+      end_w: 193
+      init_h: 67
+      init_s: 2376
+      init_w: 1
+    - end_h: 379
+      end_s: 3410
+      end_w: 376
+      init_h: 187
+      init_s: 2898
+      init_w: 184
+    - end_h: 194
+      end_s: 4279
+      end_w: 453
+      init_h: 2
+      init_s: 3767
+      init_w: 261
+    - end_h: 420
+      end_s: 3411
+      end_w: 486
+      init_h: 228
+      init_s: 2899
+      init_w: 294
+    - end_h: 385
+      end_s: 2617
+      end_w: 532
+      init_h: 193
+      init_s: 2105
+      init_w: 340
+    - end_h: 343
+      end_s: 3879
+      end_w: 441
+      init_h: 151
+      init_s: 3367
+      init_w: 249
+    - end_h: 391
+      end_s: 4028
+      end_w: 405
+      init_h: 199
+      init_s: 3516
+      init_w: 213
+    - end_h: 280
+      end_s: 3979
+      end_w: 211
+      init_h: 88
+      init_s: 3467
+      init_w: 19
+    - end_h: 274
+      end_s: 2179
+      end_w: 234
+      init_h: 82
+      init_s: 1667
+      init_w: 42
+    - end_h: 298
+      end_s: 4244
+      end_w: 427
+      init_h: 106
+      init_s: 3732
+      init_w: 235
+    - end_h: 326
+      end_s: 4843
+      end_w: 367
+      init_h: 134
+      init_s: 4331
+      init_w: 175
+    - end_h: 287
+      end_s: 2229
+      end_w: 274
+      init_h: 95
+      init_s: 1717
+      init_w: 82
+    - end_h: 274
+      end_s: 3884
+      end_w: 215
+      init_h: 82
+      init_s: 3372
+      init_w: 23
+    - end_h: 319
+      end_s: 2764
+      end_w: 290
+      init_h: 127
+      init_s: 2252
+      init_w: 98
+    - end_h: 490
+      end_s: 1447
+      end_w: 217
+      init_h: 298
+      init_s: 935
+      init_w: 25
+    - end_h: 251
+      end_s: 4886
+      end_w: 543
+      init_h: 59
+      init_s: 4374
+      init_w: 351
+    - end_h: 202
+      end_s: 4872
+      end_w: 276
+      init_h: 10
+      init_s: 4360
+      init_w: 84
+    - end_h: 391
+      end_s: 1925
+      end_w: 321
+      init_h: 199
+      init_s: 1413
+      init_w: 129
+    - end_h: 239
+      end_s: 2940
+      end_w: 532
+      init_h: 47
+      init_s: 2428
+      init_w: 340
+    - end_h: 209
+      end_s: 2421
+      end_w: 311
+      init_h: 17
+      init_s: 1909
+      init_w: 119
+    - end_h: 346
+      end_s: 3371
+      end_w: 430
+      init_h: 154
+      init_s: 2859
+      init_w: 238
+    - end_h: 366
+      end_s: 3742
+      end_w: 448
+      init_h: 174
+      init_s: 3230
+      init_w: 256
+    - end_h: 493
+      end_s: 4460
+      end_w: 378
+      init_h: 301
+      init_s: 3948
+      init_w: 186
+    - end_h: 369
+      end_s: 968
+      end_w: 454
+      init_h: 177
+      init_s: 456
+      init_w: 262
+    - end_h: 341
+      end_s: 2693
+      end_w: 266
+      init_h: 149
+      init_s: 2181
+      init_w: 74
+    - end_h: 403
+      end_s: 1322
+      end_w: 428
+      init_h: 211
+      init_s: 810
+      init_w: 236
+    - end_h: 334
+      end_s: 4110
+      end_w: 278
+      init_h: 142
+      init_s: 3598
+      init_w: 86
+    - end_h: 257
+      end_s: 4365
+      end_w: 308
+      init_h: 65
+      init_s: 3853
+      init_w: 116
+    - end_h: 212
+      end_s: 4192
+      end_w: 494
+      init_h: 20
+      init_s: 3680
+      init_w: 302
+    - end_h: 337
+      end_s: 3130
+      end_w: 401
+      init_h: 145
+      init_s: 2618
+      init_w: 209
+    - end_h: 302
+      end_s: 4342
+      end_w: 458
+      init_h: 110
+      init_s: 3830
+      init_w: 266
+    - end_h: 287
+      end_s: 4335
+      end_w: 385
+      init_h: 95
+      init_s: 3823
+      init_w: 193
+    - end_h: 330
+      end_s: 4341
+      end_w: 299
+      init_h: 138
+      init_s: 3829
+      init_w: 107
+    - end_h: 404
+      end_s: 2646
+      end_w: 243
+      init_h: 212
+      init_s: 2134
+      init_w: 51
+    - end_h: 229
+      end_s: 2866
+      end_w: 489
+      init_h: 37
+      init_s: 2354
+      init_w: 297
+    - end_h: 454
+      end_s: 1897
+      end_w: 490
+      init_h: 262
+      init_s: 1385
+      init_w: 298
+    - end_h: 407
+      end_s: 1319
+      end_w: 534
+      init_h: 215
+      init_s: 807
+      init_w: 342
+    - end_h: 258
+      end_s: 4796
+      end_w: 246
+      init_h: 66
+      init_s: 4284
+      init_w: 54
+    - end_h: 434
+      end_s: 2616
+      end_w: 229
+      init_h: 242
+      init_s: 2104
+      init_w: 37
+    - end_h: 224
+      end_s: 4141
+      end_w: 240
+      init_h: 32
+      init_s: 3629
+      init_w: 48
+    - end_h: 297
+      end_s: 1843
+      end_w: 377
+      init_h: 105
+      init_s: 1331
+      init_w: 185
+    - end_h: 497
+      end_s: 817
+      end_w: 552
+      init_h: 305
+      init_s: 305
+      init_w: 360
+    - end_h: 279
+      end_s: 3805
+      end_w: 316
+      init_h: 87
+      init_s: 3293
+      init_w: 124
+    - end_h: 437
+      end_s: 1078
+      end_w: 205
+      init_h: 245
+      init_s: 566
+      init_w: 13
+    - end_h: 305
+      end_s: 4464
+      end_w: 429
+      init_h: 113
+      init_s: 3952
+      init_w: 237
+    - end_h: 342
+      end_s: 1775
+      end_w: 523
+      init_h: 150
+      init_s: 1263
+      init_w: 331
+    - end_h: 371
+      end_s: 4675
+      end_w: 557
+      init_h: 179
+      init_s: 4163
+      init_w: 365
+    - end_h: 425
+      end_s: 3772
+      end_w: 254
+      init_h: 233
+      init_s: 3260
+      init_w: 62
+    - end_h: 280
+      end_s: 3322
+      end_w: 352
+      init_h: 88
+      init_s: 2810
+      init_w: 160
+    - end_h: 327
+      end_s: 3661
+      end_w: 306
+      init_h: 135
+      init_s: 3149
+      init_w: 114
+    - end_h: 223
+      end_s: 4679
+      end_w: 582
+      init_h: 31
+      init_s: 4167
+      init_w: 390
+    - end_h: 465
+      end_s: 1264
+      end_w: 514
+      init_h: 273
+      init_s: 752
+      init_w: 322
+    - end_h: 300
+      end_s: 3549
+      end_w: 227
+      init_h: 108
+      init_s: 3037
+      init_w: 35
+    - end_h: 466
+      end_s: 3522
+      end_w: 438
+      init_h: 274
+      init_s: 3010
+      init_w: 246
+    - end_h: 351
+      end_s: 3908
+      end_w: 566
+      init_h: 159
+      init_s: 3396
+      init_w: 374
+    - end_h: 425
+      end_s: 1927
+      end_w: 359
+      init_h: 233
+      init_s: 1415
+      init_w: 167
+    - end_h: 371
+      end_s: 2748
+      end_w: 193
+      init_h: 179
+      init_s: 2236
+      init_w: 1
+    - end_h: 486
+      end_s: 2742
+      end_w: 392
+      init_h: 294
+      init_s: 2230
+      init_w: 200
+    - end_h: 469
+      end_s: 3997
+      end_w: 266
+      init_h: 277
+      init_s: 3485
+      init_w: 74
+    - end_h: 350
+      end_s: 2723
+      end_w: 574
+      init_h: 158
+      init_s: 2211
+      init_w: 382
+    - end_h: 204
+      end_s: 3151
+      end_w: 383
+      init_h: 12
+      init_s: 2639
+      init_w: 191
+    - end_h: 508
+      end_s: 2491
+      end_w: 490
+      init_h: 316
+      init_s: 1979
+      init_w: 298
+    - end_h: 430
+      end_s: 599
+      end_w: 272
+      init_h: 238
+      init_s: 87
+      init_w: 80
+    - end_h: 229
+      end_s: 3980
+      end_w: 514
+      init_h: 37
+      init_s: 3468
+      init_w: 322
+    - end_h: 284
+      end_s: 3170
+      end_w: 549
+      init_h: 92
+      init_s: 2658
+      init_w: 357
+    - end_h: 342
+      end_s: 3193
+      end_w: 437
+      init_h: 150
+      init_s: 2681
+      init_w: 245
+    - end_h: 367
+      end_s: 4539
+      end_w: 412
+      init_h: 175
+      init_s: 4027
+      init_w: 220
+    - end_h: 208
+      end_s: 2543
+      end_w: 312
+      init_h: 16
+      init_s: 2031
+      init_w: 120
+    - end_h: 434
+      end_s: 1946
+      end_w: 358
+      init_h: 242
+      init_s: 1434
+      init_w: 166
+    - end_h: 369
+      end_s: 2642
+      end_w: 318
+      init_h: 177
+      init_s: 2130
+      init_w: 126
+    - end_h: 210
+      end_s: 3013
+      end_w: 429
+      init_h: 18
+      init_s: 2501
+      init_w: 237
+    - end_h: 221
+      end_s: 3835
+      end_w: 410
+      init_h: 29
+      init_s: 3323
+      init_w: 218
+    - end_h: 510
+      end_s: 3599
+      end_w: 351
+      init_h: 318
+      init_s: 3087
+      init_w: 159
+    - end_h: 197
+      end_s: 4700
+      end_w: 405
+      init_h: 5
+      init_s: 4188
+      init_w: 213
+    - end_h: 205
+      end_s: 2623
+      end_w: 353
+      init_h: 13
+      init_s: 2111
+      init_w: 161
+    - end_h: 452
+      end_s: 3115
+      end_w: 364
+      init_h: 260
+      init_s: 2603
+      init_w: 172
+    - end_h: 484
+      end_s: 1577
+      end_w: 471
+      init_h: 292
+      init_s: 1065
+      init_w: 279
+    - end_h: 480
+      end_s: 1884
+      end_w: 560
+      init_h: 288
+      init_s: 1372
+      init_w: 368
+    - end_h: 410
+      end_s: 4309
+      end_w: 479
+      init_h: 218
+      init_s: 3797
+      init_w: 287
+    - end_h: 348
+      end_s: 2811
+      end_w: 311
+      init_h: 156
+      init_s: 2299
+      init_w: 119
+    - end_h: 487
+      end_s: 3458
+      end_w: 254
+      init_h: 295
+      init_s: 2946
+      init_w: 62
+    - end_h: 463
+      end_s: 4084
+      end_w: 470
+      init_h: 271
+      init_s: 3572
+      init_w: 278
+    - end_h: 348
+      end_s: 3928
+      end_w: 249
+      init_h: 156
+      init_s: 3416
+      init_w: 57
+    - end_h: 355
+      end_s: 920
+      end_w: 258
+      init_h: 163
+      init_s: 408
+      init_w: 66
+    - end_h: 303
+      end_s: 3926
+      end_w: 553
+      init_h: 111
+      init_s: 3414
+      init_w: 361
+    - end_h: 405
+      end_s: 2534
+      end_w: 198
+      init_h: 213
+      init_s: 2022
+      init_w: 6
+    - end_h: 357
+      end_s: 788
+      end_w: 362
+      init_h: 165
+      init_s: 276
+      init_w: 170
+    - end_h: 324
+      end_s: 1097
+      end_w: 590
+      init_h: 132
+      init_s: 585
+      init_w: 398
+    - end_h: 284
+      end_s: 4481
+      end_w: 541
+      init_h: 92
+      init_s: 3969
+      init_w: 349
+    - end_h: 244
+      end_s: 3057
+      end_w: 302
+      init_h: 52
+      init_s: 2545
+      init_w: 110
+    - end_h: 392
+      end_s: 797
+      end_w: 316
+      init_h: 200
+      init_s: 285
+      init_w: 124
+    - end_h: 325
+      end_s: 1782
+      end_w: 198
+      init_h: 133
+      init_s: 1270
+      init_w: 6
+    - end_h: 359
+      end_s: 1024
+      end_w: 285
+      init_h: 167
+      init_s: 512
+      init_w: 93
+    - end_h: 239
+      end_s: 3390
+      end_w: 367
+      init_h: 47
+      init_s: 2878
+      init_w: 175
+    - end_h: 456
+      end_s: 1710
+      end_w: 306
+      init_h: 264
+      init_s: 1198
+      init_w: 114
+    - end_h: 466
+      end_s: 3617
+      end_w: 354
+      init_h: 274
+      init_s: 3105
+      init_w: 162
+    - end_h: 223
+      end_s: 568
+      end_w: 585
+      init_h: 31
+      init_s: 56
+      init_w: 393
+    - end_h: 331
+      end_s: 1884
+      end_w: 380
+      init_h: 139
+      init_s: 1372
+      init_w: 188
+    - end_h: 239
+      end_s: 1990
+      end_w: 568
+      init_h: 47
+      init_s: 1478
+      init_w: 376
+    - end_h: 317
+      end_s: 3528
+      end_w: 345
+      init_h: 125
+      init_s: 3016
+      init_w: 153
+    - end_h: 320
+      end_s: 2022
+      end_w: 432
+      init_h: 128
+      init_s: 1510
+      init_w: 240
+    - end_h: 327
+      end_s: 1631
+      end_w: 368
+      init_h: 135
+      init_s: 1119
+      init_w: 176
+    - end_h: 220
+      end_s: 2435
+      end_w: 389
+      init_h: 28
+      init_s: 1923
+      init_w: 197
+    - end_h: 366
+      end_s: 4436
+      end_w: 533
+      init_h: 174
+      init_s: 3924
+      init_w: 341
+    - end_h: 410
+      end_s: 2485
+      end_w: 451
+      init_h: 218
+      init_s: 1973
+      init_w: 259
+    - end_h: 224
+      end_s: 1079
+      end_w: 314
+      init_h: 32
+      init_s: 567
+      init_w: 122
+    - end_h: 461
+      end_s: 1221
+      end_w: 589
+      init_h: 269
+      init_s: 709
+      init_w: 397
+    - end_h: 321
+      end_s: 1682
+      end_w: 516
+      init_h: 129
+      init_s: 1170
+      init_w: 324
+    - end_h: 355
+      end_s: 3106
+      end_w: 474
+      init_h: 163
+      init_s: 2594
+      init_w: 282
+    - end_h: 474
+      end_s: 4390
+      end_w: 371
+      init_h: 282
+      init_s: 3878
+      init_w: 179
+    - end_h: 398
+      end_s: 935
+      end_w: 301
+      init_h: 206
+      init_s: 423
+      init_w: 109
+    - end_h: 401
+      end_s: 1946
+      end_w: 411
+      init_h: 209
+      init_s: 1434
+      init_w: 219
+    - end_h: 376
+      end_s: 4036
+      end_w: 428
+      init_h: 184
+      init_s: 3524
+      init_w: 236
+    - end_h: 280
+      end_s: 1635
+      end_w: 553
+      init_h: 88
+      init_s: 1123
+      init_w: 361
+    - end_h: 331
+      end_s: 3120
+      end_w: 488
+      init_h: 139
+      init_s: 2608
+      init_w: 296
+    - end_h: 259
+      end_s: 3390
+      end_w: 237
+      init_h: 67
+      init_s: 2878
+      init_w: 45
+    - end_h: 309
+      end_s: 2115
+      end_w: 400
+      init_h: 117
+      init_s: 1603
+      init_w: 208
+    - end_h: 470
+      end_s: 4596
+      end_w: 319
+      init_h: 278
+      init_s: 4084
+      init_w: 127
+    - end_h: 224
+      end_s: 3291
+      end_w: 233
+      init_h: 32
+      init_s: 2779
+      init_w: 41
+    - end_h: 496
+      end_s: 2259
+      end_w: 339
+      init_h: 304
+      init_s: 1747
+      init_w: 147
+    - end_h: 309
+      end_s: 2601
+      end_w: 234
+      init_h: 117
+      init_s: 2089
+      init_w: 42
+    - end_h: 315
+      end_s: 3227
+      end_w: 399
+      init_h: 123
+      init_s: 2715
+      init_w: 207
+    - end_h: 315
+      end_s: 1776
+      end_w: 514
+      init_h: 123
+      init_s: 1264
+      init_w: 322
+    - end_h: 239
+      end_s: 1694
+      end_w: 327
+      init_h: 47
+      init_s: 1182
+      init_w: 135
+    - end_h: 431
+      end_s: 4091
+      end_w: 503
+      init_h: 239
+      init_s: 3579
+      init_w: 311
+    - end_h: 280
+      end_s: 2351
+      end_w: 418
+      init_h: 88
+      init_s: 1839
+      init_w: 226
+    - end_h: 373
+      end_s: 2149
+      end_w: 241
+      init_h: 181
+      init_s: 1637
+      init_w: 49
+    - end_h: 199
+      end_s: 4126
+      end_w: 369
+      init_h: 7
+      init_s: 3614
+      init_w: 177
+    - end_h: 474
+      end_s: 4505
+      end_w: 229
+      init_h: 282
+      init_s: 3993
+      init_w: 37
+    - end_h: 377
+      end_s: 1718
+      end_w: 439
+      init_h: 185
+      init_s: 1206
+      init_w: 247
+    - end_h: 403
+      end_s: 4951
+      end_w: 426
+      init_h: 211
+      init_s: 4439
+      init_w: 234
+    - end_h: 306
+      end_s: 4405
+      end_w: 245
+      init_h: 114
+      init_s: 3893
+      init_w: 53
+    - end_h: 392
+      end_s: 1552
+      end_w: 506
+      init_h: 200
+      init_s: 1040
+      init_w: 314
+    - end_h: 476
+      end_s: 3265
+      end_w: 199
+      init_h: 284
+      init_s: 2753
+      init_w: 7
+    - end_h: 305
+      end_s: 3811
+      end_w: 504
+      init_h: 113
+      init_s: 3299
+      init_w: 312
+    - end_h: 313
+      end_s: 3746
+      end_w: 223
+      init_h: 121
+      init_s: 3234
+      init_w: 31
+    - end_h: 301
+      end_s: 3313
+      end_w: 570
+      init_h: 109
+      init_s: 2801
+      init_w: 378
+    - end_h: 340
+      end_s: 2583
+      end_w: 456
+      init_h: 148
+      init_s: 2071
+      init_w: 264
+    - end_h: 375
+      end_s: 3702
+      end_w: 514
+      init_h: 183
+      init_s: 3190
+      init_w: 322
+    - end_h: 288
+      end_s: 1308
+      end_w: 586
+      init_h: 96
+      init_s: 796
+      init_w: 394
+    - end_h: 436
+      end_s: 4067
+      end_w: 308
+      init_h: 244
+      init_s: 3555
+      init_w: 116
+    - end_h: 363
+      end_s: 3622
+      end_w: 465
+      init_h: 171
+      init_s: 3110
+      init_w: 273
+    - end_h: 455
+      end_s: 3956
+      end_w: 215
+      init_h: 263
+      init_s: 3444
+      init_w: 23
+    - end_h: 193
+      end_s: 4411
+      end_w: 395
+      init_h: 1
+      init_s: 3899
+      init_w: 203
+    - end_h: 376
+      end_s: 1335
+      end_w: 415
+      init_h: 184
+      init_s: 823
+      init_w: 223
+    - end_h: 202
+      end_s: 1118
+      end_w: 293
+      init_h: 10
+      init_s: 606
+      init_w: 101
+    - end_h: 376
+      end_s: 1116
+      end_w: 404
+      init_h: 184
+      init_s: 604
+      init_w: 212
+    - end_h: 300
+      end_s: 3050
+      end_w: 411
+      init_h: 108
+      init_s: 2538
+      init_w: 219
+    - end_h: 470
+      end_s: 3458
+      end_w: 515
+      init_h: 278
+      init_s: 2946
+      init_w: 323
+    - end_h: 219
+      end_s: 3872
+      end_w: 548
+      init_h: 27
+      init_s: 3360
+      init_w: 356
+    - end_h: 192
+      end_s: 572
+      end_w: 575
+      init_h: 0
+      init_s: 60
+      init_w: 383
+    - end_h: 261
+      end_s: 975
+      end_w: 569
+      init_h: 69
+      init_s: 463
+      init_w: 377
+    - end_h: 241
+      end_s: 4885
+      end_w: 220
+      init_h: 49
+      init_s: 4373
+      init_w: 28
+    - end_h: 262
+      end_s: 1262
+      end_w: 369
+      init_h: 70
+      init_s: 750
+      init_w: 177
+    - end_h: 439
+      end_s: 1476
+      end_w: 246
+      init_h: 247
+      init_s: 964
+      init_w: 54
+    - end_h: 209
+      end_s: 3467
+      end_w: 445
+      init_h: 17
+      init_s: 2955
+      init_w: 253
+    - end_h: 259
+      end_s: 2189
+      end_w: 560
+      init_h: 67
+      init_s: 1677
+      init_w: 368
+    - end_h: 215
+      end_s: 1702
+      end_w: 212
+      init_h: 23
+      init_s: 1190
+      init_w: 20
+    - end_h: 453
+      end_s: 3909
+      end_w: 589
+      init_h: 261
+      init_s: 3397
+      init_w: 397
+    - end_h: 419
+      end_s: 2771
+      end_w: 498
+      init_h: 227
+      init_s: 2259
+      init_w: 306
+    - end_h: 366
+      end_s: 3535
+      end_w: 243
+      init_h: 174
+      init_s: 3023
+      init_w: 51
+    - end_h: 229
+      end_s: 2004
+      end_w: 561
+      init_h: 37
+      init_s: 1492
+      init_w: 369
+    - end_h: 441
+      end_s: 3785
+      end_w: 312
+      init_h: 249
+      init_s: 3273
+      init_w: 120
+    - end_h: 322
+      end_s: 4800
+      end_w: 582
+      init_h: 130
+      init_s: 4288
+      init_w: 390
+    - end_h: 197
+      end_s: 2344
+      end_w: 378
+      init_h: 5
+      init_s: 1832
+      init_w: 186
+    - end_h: 403
+      end_s: 1212
+      end_w: 285
+      init_h: 211
+      init_s: 700
+      init_w: 93
+    - end_h: 359
+      end_s: 4616
+      end_w: 244
+      init_h: 167
+      init_s: 4104
+      init_w: 52
+    - end_h: 484
+      end_s: 3886
+      end_w: 324
+      init_h: 292
+      init_s: 3374
+      init_w: 132
+    - end_h: 231
+      end_s: 3177
+      end_w: 511
+      init_h: 39
+      init_s: 2665
+      init_w: 319
+    - end_h: 212
+      end_s: 4038
+      end_w: 586
+      init_h: 20
+      init_s: 3526
+      init_w: 394
+    - end_h: 362
+      end_s: 936
+      end_w: 392
+      init_h: 170
+      init_s: 424
+      init_w: 200
+    - end_h: 352
+      end_s: 4069
+      end_w: 231
+      init_h: 160
+      init_s: 3557
+      init_w: 39
+    - end_h: 493
+      end_s: 3638
+      end_w: 287
+      init_h: 301
+      init_s: 3126
+      init_w: 95
+    - end_h: 383
+      end_s: 2093
+      end_w: 524
+      init_h: 191
+      init_s: 1581
+      init_w: 332
+    - end_h: 394
+      end_s: 4517
+      end_w: 586
+      init_h: 202
+      init_s: 4005
+      init_w: 394
+    - end_h: 410
+      end_s: 4035
+      end_w: 365
+      init_h: 218
+      init_s: 3523
+      init_w: 173
+    - end_h: 494
+      end_s: 1356
+      end_w: 500
+      init_h: 302
+      init_s: 844
+      init_w: 308
+    - end_h: 233
+      end_s: 4657
+      end_w: 547
+      init_h: 41
+      init_s: 4145
+      init_w: 355
+    - end_h: 501
+      end_s: 711
+      end_w: 323
+      init_h: 309
+      init_s: 199
+      init_w: 131
+    - end_h: 498
+      end_s: 1800
+      end_w: 317
+      init_h: 306
+      init_s: 1288
+      init_w: 125
+    - end_h: 384
+      end_s: 4507
+      end_w: 246
+      init_h: 192
+      init_s: 3995
+      init_w: 54
+    - end_h: 387
+      end_s: 2594
+      end_w: 233
+      init_h: 195
+      init_s: 2082
+      init_w: 41
+    - end_h: 481
+      end_s: 3574
+      end_w: 215
+      init_h: 289
+      init_s: 3062
+      init_w: 23
+    - end_h: 196
+      end_s: 2116
+      end_w: 323
+      init_h: 4
+      init_s: 1604
+      init_w: 131
+    - end_h: 335
+      end_s: 1325
+      end_w: 495
+      init_h: 143
+      init_s: 813
+      init_w: 303
+    - end_h: 344
+      end_s: 2909
+      end_w: 504
+      init_h: 152
+      init_s: 2397
+      init_w: 312
+    - end_h: 416
+      end_s: 4289
+      end_w: 397
+      init_h: 224
+      init_s: 3777
+      init_w: 205
+    - end_h: 386
+      end_s: 2921
+      end_w: 204
+      init_h: 194
+      init_s: 2409
+      init_w: 12
+    - end_h: 214
+      end_s: 817
+      end_w: 256
+      init_h: 22
+      init_s: 305
+      init_w: 64
+    - end_h: 510
+      end_s: 2516
+      end_w: 195
+      init_h: 318
+      init_s: 2004
+      init_w: 3
+    - end_h: 259
+      end_s: 4152
+      end_w: 380
+      init_h: 67
+      init_s: 3640
+      init_w: 188
+    - end_h: 453
+      end_s: 4872
+      end_w: 564
+      init_h: 261
+      init_s: 4360
+      init_w: 372
+    - end_h: 294
+      end_s: 3989
+      end_w: 294
+      init_h: 102
+      init_s: 3477
+      init_w: 102
+    - end_h: 338
+      end_s: 1460
+      end_w: 407
+      init_h: 146
+      init_s: 948
+      init_w: 215
+    - end_h: 385
+      end_s: 2226
+      end_w: 564
+      init_h: 193
+      init_s: 1714
+      init_w: 372
+    - end_h: 293
+      end_s: 1937
+      end_w: 467
+      init_h: 101
+      init_s: 1425
+      init_w: 275
+    - end_h: 475
+      end_s: 4430
+      end_w: 303
+      init_h: 283
+      init_s: 3918
+      init_w: 111
+    - end_h: 473
+      end_s: 3824
+      end_w: 540
+      init_h: 281
+      init_s: 3312
+      init_w: 348
+    - end_h: 357
+      end_s: 3031
+      end_w: 468
+      init_h: 165
+      init_s: 2519
+      init_w: 276
+    - end_h: 219
+      end_s: 4684
+      end_w: 383
+      init_h: 27
+      init_s: 4172
+      init_w: 191
+    - end_h: 206
+      end_s: 1452
+      end_w: 487
+      init_h: 14
+      init_s: 940
+      init_w: 295
+    - end_h: 463
+      end_s: 3148
+      end_w: 441
+      init_h: 271
+      init_s: 2636
+      init_w: 249
+    - end_h: 466
+      end_s: 4639
+      end_w: 541
+      init_h: 274
+      init_s: 4127
+      init_w: 349
+    - end_h: 418
+      end_s: 3509
+      end_w: 277
+      init_h: 226
+      init_s: 2997
+      init_w: 85
+    - end_h: 376
+      end_s: 3368
+      end_w: 479
+      init_h: 184
+      init_s: 2856
+      init_w: 287
+    - end_h: 421
+      end_s: 1668
+      end_w: 197
+      init_h: 229
+      init_s: 1156
+      init_w: 5
+    - end_h: 313
+      end_s: 2165
+      end_w: 467
+      init_h: 121
+      init_s: 1653
+      init_w: 275
+    - end_h: 226
+      end_s: 3290
+      end_w: 220
+      init_h: 34
+      init_s: 2778
+      init_w: 28
+    - end_h: 405
+      end_s: 3492
+      end_w: 234
+      init_h: 213
+      init_s: 2980
+      init_w: 42
+    - end_h: 193
+      end_s: 4861
+      end_w: 274
+      init_h: 1
+      init_s: 4349
+      init_w: 82
+    - end_h: 324
+      end_s: 4529
+      end_w: 473
+      init_h: 132
+      init_s: 4017
+      init_w: 281
+    - end_h: 319
+      end_s: 1453
+      end_w: 510
+      init_h: 127
+      init_s: 941
+      init_w: 318
+    - end_h: 253
+      end_s: 815
+      end_w: 202
+      init_h: 61
+      init_s: 303
+      init_w: 10
+    - end_h: 282
+      end_s: 1728
+      end_w: 263
+      init_h: 90
+      init_s: 1216
+      init_w: 71
+    - end_h: 320
+      end_s: 4017
+      end_w: 358
+      init_h: 128
+      init_s: 3505
+      init_w: 166
+    - end_h: 264
+      end_s: 4946
+      end_w: 512
+      init_h: 72
+      init_s: 4434
+      init_w: 320
+    - end_h: 224
+      end_s: 1129
+      end_w: 343
+      init_h: 32
+      init_s: 617
+      init_w: 151
+    - end_h: 321
+      end_s: 2444
+      end_w: 241
+      init_h: 129
+      init_s: 1932
+      init_w: 49
+    - end_h: 391
+      end_s: 1957
+      end_w: 471
+      init_h: 199
+      init_s: 1445
+      init_w: 279
+    - end_h: 338
+      end_s: 995
+      end_w: 367
+      init_h: 146
+      init_s: 483
+      init_w: 175
+    - end_h: 481
+      end_s: 4084
+      end_w: 518
+      init_h: 289
+      init_s: 3572
+      init_w: 326
+    - end_h: 382
+      end_s: 2640
+      end_w: 295
+      init_h: 190
+      init_s: 2128
+      init_w: 103
+    - end_h: 282
+      end_s: 2483
+      end_w: 318
+      init_h: 90
+      init_s: 1971
+      init_w: 126
+    - end_h: 433
+      end_s: 4437
+      end_w: 385
+      init_h: 241
+      init_s: 3925
+      init_w: 193
+    - end_h: 469
+      end_s: 750
+      end_w: 283
+      init_h: 277
+      init_s: 238
+      init_w: 91
+    - end_h: 418
+      end_s: 3232
+      end_w: 346
+      init_h: 226
+      init_s: 2720
+      init_w: 154
+    - end_h: 265
+      end_s: 2810
+      end_w: 430
+      init_h: 73
+      init_s: 2298
+      init_w: 238
+    - end_h: 329
+      end_s: 3462
+      end_w: 353
+      init_h: 137
+      init_s: 2950
+      init_w: 161
+    - end_h: 271
+      end_s: 567
+      end_w: 459
+      init_h: 79
+      init_s: 55
+      init_w: 267
+    - end_h: 313
+      end_s: 3981
+      end_w: 479
+      init_h: 121
+      init_s: 3469
+      init_w: 287
+    - end_h: 277
+      end_s: 1811
+      end_w: 195
+      init_h: 85
+      init_s: 1299
+      init_w: 3
+    - end_h: 458
+      end_s: 3921
+      end_w: 508
+      init_h: 266
+      init_s: 3409
+      init_w: 316
+    - end_h: 436
+      end_s: 3018
+      end_w: 230
+      init_h: 244
+      init_s: 2506
+      init_w: 38
+    - end_h: 202
+      end_s: 4186
+      end_w: 479
+      init_h: 10
+      init_s: 3674
+      init_w: 287
+    - end_h: 496
+      end_s: 2011
+      end_w: 546
+      init_h: 304
+      init_s: 1499
+      init_w: 354
+    - end_h: 333
+      end_s: 3249
+      end_w: 491
+      init_h: 141
+      init_s: 2737
+      init_w: 299
+    - end_h: 281
+      end_s: 4331
+      end_w: 499
+      init_h: 89
+      init_s: 3819
+      init_w: 307
+    - end_h: 468
+      end_s: 4753
+      end_w: 502
+      init_h: 276
+      init_s: 4241
+      init_w: 310
+    - end_h: 419
+      end_s: 4059
+      end_w: 422
+      init_h: 227
+      init_s: 3547
+      init_w: 230
+    - end_h: 382
+      end_s: 550
+      end_w: 197
+      init_h: 190
+      init_s: 38
+      init_w: 5
+    - end_h: 323
+      end_s: 1011
+      end_w: 374
+      init_h: 131
+      init_s: 499
+      init_w: 182
+    - end_h: 475
+      end_s: 3130
+      end_w: 588
+      init_h: 283
+      init_s: 2618
+      init_w: 396
+    - end_h: 452
+      end_s: 3536
+      end_w: 331
+      init_h: 260
+      init_s: 3024
+      init_w: 139
+    - end_h: 244
+      end_s: 2561
+      end_w: 295
+      init_h: 52
+      init_s: 2049
+      init_w: 103
+    - end_h: 222
+      end_s: 3872
+      end_w: 314
+      init_h: 30
+      init_s: 3360
+      init_w: 122
+    - end_h: 271
+      end_s: 2843
+      end_w: 454
+      init_h: 79
+      init_s: 2331
+      init_w: 262
+    - end_h: 235
+      end_s: 654
+      end_w: 578
+      init_h: 43
+      init_s: 142
+      init_w: 386
+    - end_h: 193
+      end_s: 1710
+      end_w: 291
+      init_h: 1
+      init_s: 1198
+      init_w: 99
+    - end_h: 195
+      end_s: 1596
+      end_w: 596
+      init_h: 3
+      init_s: 1084
+      init_w: 404
+    - end_h: 293
+      end_s: 4678
+      end_w: 376
+      init_h: 101
+      init_s: 4166
+      init_w: 184
+    - end_h: 242
+      end_s: 733
+      end_w: 579
+      init_h: 50
+      init_s: 221
+      init_w: 387
+    - end_h: 337
+      end_s: 1827
+      end_w: 497
+      init_h: 145
+      init_s: 1315
+      init_w: 305
+    - end_h: 477
+      end_s: 2156
+      end_w: 194
+      init_h: 285
+      init_s: 1644
+      init_w: 2
+    - end_h: 480
+      end_s: 3383
+      end_w: 353
+      init_h: 288
+      init_s: 2871
+      init_w: 161
+    - end_h: 217
+      end_s: 2775
+      end_w: 493
+      init_h: 25
+      init_s: 2263
+      init_w: 301
+    - end_h: 272
+      end_s: 1646
+      end_w: 293
+      init_h: 80
+      init_s: 1134
+      init_w: 101
+    - end_h: 504
+      end_s: 4760
+      end_w: 403
+      init_h: 312
+      init_s: 4248
+      init_w: 211
+    - end_h: 380
+      end_s: 542
+      end_w: 492
+      init_h: 188
+      init_s: 30
+      init_w: 300
+    - end_h: 392
+      end_s: 2210
+      end_w: 530
+      init_h: 200
+      init_s: 1698
+      init_w: 338
+    - end_h: 309
+      end_s: 1789
+      end_w: 598
+      init_h: 117
+      init_s: 1277
+      init_w: 406
+    - end_h: 382
+      end_s: 2207
+      end_w: 262
+      init_h: 190
+      init_s: 1695
+      init_w: 70
+    - end_h: 306
+      end_s: 2764
+      end_w: 375
+      init_h: 114
+      init_s: 2252
+      init_w: 183
+    - end_h: 477
+      end_s: 4867
+      end_w: 255
+      init_h: 285
+      init_s: 4355
+      init_w: 63
+    - end_h: 373
+      end_s: 2413
+      end_w: 447
+      init_h: 181
+      init_s: 1901
+      init_w: 255
+    - end_h: 432
+      end_s: 826
+      end_w: 569
+      init_h: 240
+      init_s: 314
+      init_w: 377
+    - end_h: 322
+      end_s: 1322
+      end_w: 310
+      init_h: 130
+      init_s: 810
+      init_w: 118
+    - end_h: 215
+      end_s: 4621
+      end_w: 249
+      init_h: 23
+      init_s: 4109
+      init_w: 57
+    - end_h: 344
+      end_s: 2206
+      end_w: 536
+      init_h: 152
+      init_s: 1694
+      init_w: 344
+    - end_h: 321
+      end_s: 4011
+      end_w: 211
+      init_h: 129
+      init_s: 3499
+      init_w: 19
+    - end_h: 400
+      end_s: 633
+      end_w: 548
+      init_h: 208
+      init_s: 121
+      init_w: 356
+    - end_h: 498
+      end_s: 3040
+      end_w: 229
+      init_h: 306
+      init_s: 2528
+      init_w: 37
+    - end_h: 233
+      end_s: 2017
+      end_w: 554
+      init_h: 41
+      init_s: 1505
+      init_w: 362
+    - end_h: 221
+      end_s: 4870
+      end_w: 576
+      init_h: 29
+      init_s: 4358
+      init_w: 384
+    - end_h: 358
+      end_s: 1948
+      end_w: 294
+      init_h: 166
+      init_s: 1436
+      init_w: 102
+    - end_h: 302
+      end_s: 2743
+      end_w: 273
+      init_h: 110
+      init_s: 2231
+      init_w: 81
+    - end_h: 301
+      end_s: 2060
+      end_w: 498
+      init_h: 109
+      init_s: 1548
+      init_w: 306
+    - end_h: 280
+      end_s: 4627
+      end_w: 255
+      init_h: 88
+      init_s: 4115
+      init_w: 63
+    - end_h: 196
+      end_s: 1195
+      end_w: 445
+      init_h: 4
+      init_s: 683
+      init_w: 253
+    - end_h: 476
+      end_s: 1749
+      end_w: 504
+      init_h: 284
+      init_s: 1237
+      init_w: 312
+    - end_h: 312
+      end_s: 3447
+      end_w: 395
+      init_h: 120
+      init_s: 2935
+      init_w: 203
+    - end_h: 413
+      end_s: 4087
+      end_w: 453
+      init_h: 221
+      init_s: 3575
+      init_w: 261
+    - end_h: 349
+      end_s: 1975
+      end_w: 398
+      init_h: 157
+      init_s: 1463
+      init_w: 206
+    - end_h: 399
+      end_s: 3322
+      end_w: 385
+      init_h: 207
+      init_s: 2810
+      init_w: 193
+    - end_h: 484
+      end_s: 2025
+      end_w: 567
+      init_h: 292
+      init_s: 1513
+      init_w: 375
+    - end_h: 423
+      end_s: 2341
+      end_w: 467
+      init_h: 231
+      init_s: 1829
+      init_w: 275
+    - end_h: 277
+      end_s: 3548
+      end_w: 286
+      init_h: 85
+      init_s: 3036
+      init_w: 94
+    - end_h: 416
+      end_s: 4259
+      end_w: 542
+      init_h: 224
+      init_s: 3747
+      init_w: 350
+    - end_h: 313
+      end_s: 1163
+      end_w: 250
+      init_h: 121
+      init_s: 651
+      init_w: 58
+    - end_h: 391
+      end_s: 3886
+      end_w: 476
+      init_h: 199
+      init_s: 3374
+      init_w: 284
+    - end_h: 283
+      end_s: 1784
+      end_w: 474
+      init_h: 91
+      init_s: 1272
+      init_w: 282
+    - end_h: 269
+      end_s: 1940
+      end_w: 593
+      init_h: 77
+      init_s: 1428
+      init_w: 401
+    - end_h: 297
+      end_s: 1451
+      end_w: 226
+      init_h: 105
+      init_s: 939
+      init_w: 34
+    - end_h: 192
+      end_s: 3979
+      end_w: 452
+      init_h: 0
+      init_s: 3467
+      init_w: 260
+    - end_h: 482
+      end_s: 2708
+      end_w: 254
+      init_h: 290
+      init_s: 2196
+      init_w: 62
+    - end_h: 359
+      end_s: 1562
+      end_w: 547
+      init_h: 167
+      init_s: 1050
+      init_w: 355
+    - end_h: 230
+      end_s: 4508
+      end_w: 599
+      init_h: 38
+      init_s: 3996
+      init_w: 407
+    - end_h: 316
+      end_s: 3308
+      end_w: 362
+      init_h: 124
+      init_s: 2796
+      init_w: 170
+    - end_h: 485
+      end_s: 3390
+      end_w: 561
+      init_h: 293
+      init_s: 2878
+      init_w: 369
+    - end_h: 356
+      end_s: 4282
+      end_w: 579
+      init_h: 164
+      init_s: 3770
+      init_w: 387
+    - end_h: 314
+      end_s: 959
+      end_w: 322
+      init_h: 122
+      init_s: 447
+      init_w: 130
+    - end_h: 267
+      end_s: 1664
+      end_w: 243
+      init_h: 75
+      init_s: 1152
+      init_w: 51
+    - end_h: 496
+      end_s: 515
+      end_w: 433
+      init_h: 304
+      init_s: 3
+      init_w: 241
+    - end_h: 399
+      end_s: 1721
+      end_w: 297
+      init_h: 207
+      init_s: 1209
+      init_w: 105
+    - end_h: 510
+      end_s: 1111
+      end_w: 312
+      init_h: 318
+      init_s: 599
+      init_w: 120
+    - end_h: 248
+      end_s: 1310
+      end_w: 205
+      init_h: 56
+      init_s: 798
+      init_w: 13
+    - end_h: 245
+      end_s: 1409
+      end_w: 587
+      init_h: 53
+      init_s: 897
+      init_w: 395
+    - end_h: 278
+      end_s: 2131
+      end_w: 582
+      init_h: 86
+      init_s: 1619
+      init_w: 390
+    - end_h: 445
+      end_s: 2520
+      end_w: 532
+      init_h: 253
+      init_s: 2008
+      init_w: 340
+    - end_h: 469
+      end_s: 3779
+      end_w: 509
+      init_h: 277
+      init_s: 3267
+      init_w: 317
+    img_path: .//0_MF4_v1//results_demotion_MF2//CellVideo 07_iter0_demotion/CellVideo
+      07.tif
+img_name_list:
+- CellVideo 07
+local_model: null
+lr: 0.0001
+n_epochs: 30
+ngpu: 2
+num_workers: 0
+output_dir: null
+overlap_factor: 0.5
+patch_t: 512
+patch_x: 192
+patch_y: 192
+pretrained_pth: pth_deepcad_MF2//2_6000f_iter4//Self_SL_20.pth
+pth_dir: .//0_MF4_v1//pth_deepcad_MF2
+pth_name: CellVideo 07_iter1
+pth_path: .//0_MF4_v1//pth_deepcad_MF2/CellVideo 07_iter1
+sample_mode: T
+scale_factor: 1
+select_img_num: 100000
+stack_num: 1
+train_datasets_size: 1000
+whole_t: 5000
+whole_x: 600
+whole_y: 512

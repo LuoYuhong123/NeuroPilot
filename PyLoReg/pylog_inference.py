@@ -29,6 +29,31 @@ from tifffile import TiffWriter
 from PyLoReg.PyLoRegNet.PyLoRegNet import PyLoRegNet
 
 
+def _io_path(path) -> str:
+    """Return a path string that works with long local paths on Windows."""
+    p = Path(path)
+    if os.name != "nt":
+        return str(p)
+    if not p.is_absolute():
+        p = p.resolve()
+    s = str(p)
+    if s.startswith("\\\\?\\"):
+        return s
+    if s.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + s.lstrip("\\")
+    return "\\\\?\\" + s
+
+
+def _np_save(path, array) -> None:
+    with open(_io_path(path), "wb") as fh:
+        np.save(fh, array)
+
+
+def _np_savez_compressed(path, **arrays) -> None:
+    with open(_io_path(path), "wb") as fh:
+        np.savez_compressed(fh, **arrays)
+
+
 # =========================================================
 # 0) Robust checkpoint loader
 # =========================================================
@@ -178,7 +203,7 @@ class TemplateSaver:
 
         stem = Path(self.stack_save_path).stem
         out_path = out_dir / f"{stem}_template_iter{it+1:02d}.tif"
-        writer = TiffWriter(str(out_path), bigtiff=True)
+        writer = TiffWriter(_io_path(out_path), bigtiff=True)
         return out_path, writer
 
     def _default_dir(self):
@@ -752,6 +777,25 @@ def demotion_PyLoReg_infer2stack_one_shot_raw_warp(
         model_root_path = cwd_candidate if cwd_candidate.exists() else file_candidate
     model_path = str(model_root_path / model_name / "gmflow_latest.pt")
 
+    def _load_torch_model_for_backend():
+        nonlocal model
+        if model is not None:
+            return model
+        base_model = PyLoRegNet(feature_channels=feature_channels).to(device)
+        model = nn.DataParallel(base_model) if torch.cuda.device_count() > 1 else base_model
+        import platform
+        if platform.system() != "Windows":
+            model = torch.compile(model, mode="reduce-overhead")
+        else:
+            print("[INFO] torch.compile disabled on Windows")
+
+        print("[Model] Loading:", model_path)
+        model, _, info = load_weights_safely(model, model_path, device="cuda", strict=False, verbose=True)
+        if isinstance(info, dict):
+            print("[ModelLoad] strategy:", info.get("strategy", "unknown"))
+        model.eval()
+        return model
+
     if net_iter_num > 0:
         if network_backend == "tensorrt":
             if device.type != "cuda":
@@ -767,20 +811,7 @@ def demotion_PyLoReg_infer2stack_one_shot_raw_warp(
             print("[Model] TensorRT engine:", tensorrt_engine_path)
             print("[Model] TensorRT expected inputs:", trt_runner.input_shapes)
         else:
-            base_model = PyLoRegNet(feature_channels=feature_channels).to(device)
-            model = nn.DataParallel(base_model) if torch.cuda.device_count() > 1 else base_model
-            # model = torch.compile(model, mode="reduce-overhead")
-            import platform
-            if platform.system() != "Windows":
-                model = torch.compile(model, mode="reduce-overhead")
-            else:
-                print("[INFO] torch.compile disabled on Windows")
-
-            print("[Model] Loading:", model_path)
-            model, _, info = load_weights_safely(model, model_path, device="cuda", strict=False, verbose=True)
-            if isinstance(info, dict):
-                print("[ModelLoad] strategy:", info.get("strategy", "unknown"))
-            model.eval()
+            _load_torch_model_for_backend()
     else:
         print("[Model] Skipped: net_iter_num=0 (rigid-only mode)")
 
@@ -1120,14 +1151,14 @@ def demotion_PyLoReg_infer2stack_one_shot_raw_warp(
                 # 保存每一轮模板、选中帧和 correlation scores，方便检查模板是否被坏帧污染。
                 robust_template_path = robust_tpl_dir / f"{stem}_robust_template_iter{it+1:02d}.tif"
                 if template_save_dtype == "float32":
-                    tiff.imwrite(str(robust_template_path), global_template.astype(np.float32, copy=False))
+                    tiff.imwrite(_io_path(robust_template_path), global_template.astype(np.float32, copy=False))
                 else:
-                    tiff.imwrite(str(robust_template_path), np.clip(global_template * 65535.0, 0, 65535).astype(np.uint16))
+                    tiff.imwrite(_io_path(robust_template_path), np.clip(global_template * 65535.0, 0, 65535).astype(np.uint16))
 
-                np.save(str(robust_tpl_dir / f"{stem}_robust_selected_indices_iter{it+1:02d}.npy"), sel_idx)
+                _np_save(robust_tpl_dir / f"{stem}_robust_selected_indices_iter{it+1:02d}.npy", sel_idx)
                 if tpl_info is not None:
-                    np.savez_compressed(
-                        str(robust_tpl_dir / f"{stem}_robust_scores_iter{it+1:02d}.npz"),
+                    _np_savez_compressed(
+                        robust_tpl_dir / f"{stem}_robust_scores_iter{it+1:02d}.npz",
                         pool_idx=tpl_info["pool_idx"],
                         selected_idx=tpl_info["selected_idx"],
                         scores=tpl_info["scores"],
@@ -1321,12 +1352,12 @@ def demotion_PyLoReg_infer2stack_one_shot_raw_warp(
                     # Therefore this optional QC save writes the iter1-corrected img_stack,
                     # not a partially warped raw_stack.
                     inter_img_u16 = (img_stack * (vmax_img - vmin_img) + vmin_img).clip(0, 65535).astype("uint16")
-                    tiff.imwrite(str(iter1_path), inter_img_u16)
+                    tiff.imwrite(_io_path(iter1_path), inter_img_u16)
                     print(f"[Saved] Iter1 rigid img_stack QC → {iter1_path}")
 
                     if bool(save_iter1_img_stack):
                         iter1_img_path = iter1_path.with_name(iter1_path.stem + "_IMG" + iter1_path.suffix)
-                        tiff.imwrite(str(iter1_img_path), inter_img_u16)
+                        tiff.imwrite(_io_path(iter1_img_path), inter_img_u16)
                         print(f"[Saved] Iter1 rigid img_stack copy → {iter1_img_path}")
 
             else:
@@ -1358,14 +1389,24 @@ def demotion_PyLoReg_infer2stack_one_shot_raw_warp(
                     img_p, pad = pad_to_multiple(img_batch, 16)
                     GT_p, _ = pad_to_multiple(GT, 16)
 
+                    flow_b2hw = None
                     if trt_runner is not None:
-                        flow_b2hw = trt_runner(GT_p, img_p)
-                    elif amp_enabled:
-                        with torch.cuda.amp.autocast(True):
+                        try:
+                            flow_b2hw = trt_runner(GT_p, img_p)
+                        except ValueError as exc:
+                            if "shape mismatch" not in str(exc):
+                                raise
+                            print(f"[TensorRT] {exc}")
+                            print("[TensorRT] Falling back to torch backend for this run.")
+                            trt_runner = None
+
+                    if flow_b2hw is None:
+                        _load_torch_model_for_backend()
+                        if amp_enabled:
+                            with torch.cuda.amp.autocast(True):
+                                out = model(GT_p, img_p, use_feature_num)
+                        else:
                             out = model(GT_p, img_p, use_feature_num)
-                        flow_b2hw = unpad(out["flow_preds"][-1], pad)  # [B,2,H,W]
-                    else:
-                        out = model(GT_p, img_p, use_feature_num)
                         flow_b2hw = unpad(out["flow_preds"][-1], pad)  # [B,2,H,W]
                     flow_bhw2 = flow_b2hw.permute(0, 2, 3, 1).contiguous()  # [B,H,W,2]
 
@@ -1481,16 +1522,16 @@ def demotion_PyLoReg_infer2stack_one_shot_raw_warp(
         scale_label = ("%g" % float(fq.flow_scale)).replace(".", "p")
         offset_label = ("%g" % float(fq.flow_offset)).replace(".", "p")
         flow_label = f"{fq.storage_dtype}_x{scale_label}_off{offset_label}"
-        tiff.imwrite(mask_folder / f"{stem}_mask_final.tif", mask_accum_stack)
-        tiff.imwrite(flow_folder / f"{stem}_flow_u_{flow_label}.tif", flow_stack[..., 0])
-        tiff.imwrite(flow_folder / f"{stem}_flow_v_{flow_label}.tif", flow_stack[..., 1])
+        tiff.imwrite(_io_path(mask_folder / f"{stem}_mask_final.tif"), mask_accum_stack)
+        tiff.imwrite(_io_path(flow_folder / f"{stem}_flow_u_{flow_label}.tif"), flow_stack[..., 0])
+        tiff.imwrite(_io_path(flow_folder / f"{stem}_flow_v_{flow_label}.tif"), flow_stack[..., 1])
         print("[Saved] Mask & cumulative Flow")
 
     # =========================================================
     # save final stack
     # =========================================================
     final = (final_stack * (vmax_raw - vmin_raw) + vmin_raw).clip(0, 65535).astype("uint16")
-    tiff.imwrite(stack_save_path, final)
+    tiff.imwrite(_io_path(stack_save_path), final)
     print("\n[Done] Demotion saved →", stack_save_path)
     return stack_save_path
 

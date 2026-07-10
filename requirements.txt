@@ -1,0 +1,35 @@
+# Main NeuroPilot runtime dependencies.
+#
+# The recommended installation path is still the conda environment in
+# environment-neuropilot.yml because OpenCV, OpenMP, CUDA/PyTorch, and TIFF
+# codecs are more reproducible there. This file mirrors the Python-level
+# packages for users who need a pip requirements list.
+
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+numpy
+scipy
+matplotlib
+tifffile
+scikit-image
+PyYAML
+pillow
+opencv-python
+h5py
+joblib
+numba
+
+torch==2.5.1+cu121
+tensorrt-cu12==10.8.0.43
+onnx==1.21.0
+
+csbdeep
+gdown
+tqdm
+tqdm-joblib
+pypdf
+
+# Optional / separate-workflow dependencies:
+# - weasyprint: only needed when PDF export is explicitly enabled.
+# - suite2p: install through environment-suite2p.yml for cell-data downstream.
+# - deepinterpolation: only needed for legacy deepinterpolation helper calls.
