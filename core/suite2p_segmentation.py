@@ -474,7 +474,23 @@ def intensity_filter_suite2p_plane0_no_overwrite(
 def _write_json(path: Path, payload: dict):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+        json.dump(_json_ready(payload), f, indent=2, ensure_ascii=False)
+
+
+def _json_ready(value):
+    if isinstance(value, dict):
+        return {str(k): _json_ready(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(v) for v in value]
+    if isinstance(value, set):
+        return [_json_ready(v) for v in sorted(value, key=str)]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return _json_ready(value.item())
+    if isinstance(value, Path):
+        return str(value)
+    return value
 
 
 def _read_json_if_exists(path: Path):
@@ -601,6 +617,10 @@ def run_suite2p_segmentation(
 
     if suite2p is None:
         raise ImportError("suite2p is not available in current environment")
+
+    # Keep Suite2p from treating a stale filtered plane copy as an input plane on reruns.
+    if plane0_intensity_dir.exists():
+        shutil.rmtree(plane0_intensity_dir)
 
     stack = load_tif_pages_to_thw(str(input_tif_path))
     img_cat_name = str(output_root / "img_cat.tif")
