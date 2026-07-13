@@ -1,9 +1,15 @@
 # 24h Demo Dataset
 
-Place the 24h demo movie here:
+Download the 24h demo movie from the GitHub Release asset:
 
 ```text
-CellVideo 01-1.tif
+https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/CellVideo.01-1.tif
+```
+
+Save it locally as:
+
+```text
+demo_data/24h/CellVideo 01-1.tif
 ```
 
 The TIFF payload is intentionally not tracked in normal git history because it
