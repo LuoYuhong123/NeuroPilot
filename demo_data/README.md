@@ -13,11 +13,8 @@ https://github.com/LuoYuhong123/NeuroPilot/releases/tag/v0.1.0
 
 | Dataset | Save as | Download asset |
 | --- | --- | --- |
-| 24h | `demo_data/24h/CellVideo 01-1.tif` | `https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/CellVideo.01-1.tif` |
-| spine | `demo_data/spine/ju2df_5day_freemoving-male1-5day-image-pain 0.tif` | `https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/ju2df_5day_freemoving-male1-5day-image-pain.0.tif` |
-
-GitHub normalizes spaces in Release asset names to dots, so save each download
-with the local filename shown in the `Save as` column.
+| 24h | `demo_data/24h/demo_data_24h.tiff` | `https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/demo_data_24h.tiff` |
+| spine | `demo_data/spine/demo_data_spine.tiff` | `https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/demo_data_spine.tiff` |
 
 ## PowerShell
 
@@ -25,12 +22,12 @@ with the local filename shown in the `Save as` column.
 New-Item -ItemType Directory -Force demo_data\24h, demo_data\spine | Out-Null
 
 Invoke-WebRequest `
-  -Uri "https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/CellVideo.01-1.tif" `
-  -OutFile "demo_data\24h\CellVideo 01-1.tif"
+  -Uri "https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/demo_data_24h.tiff" `
+  -OutFile "demo_data\24h\demo_data_24h.tiff"
 
 Invoke-WebRequest `
-  -Uri "https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/ju2df_5day_freemoving-male1-5day-image-pain.0.tif" `
-  -OutFile "demo_data\spine\ju2df_5day_freemoving-male1-5day-image-pain 0.tif"
+  -Uri "https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/demo_data_spine.tiff" `
+  -OutFile "demo_data\spine\demo_data_spine.tiff"
 ```
 
 ## Bash
@@ -39,20 +36,20 @@ Invoke-WebRequest `
 mkdir -p demo_data/24h demo_data/spine
 
 curl -L \
-  -o "demo_data/24h/CellVideo 01-1.tif" \
-  "https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/CellVideo.01-1.tif"
+  -o "demo_data/24h/demo_data_24h.tiff" \
+  "https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/demo_data_24h.tiff"
 
 curl -L \
-  -o "demo_data/spine/ju2df_5day_freemoving-male1-5day-image-pain 0.tif" \
-  "https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/ju2df_5day_freemoving-male1-5day-image-pain.0.tif"
+  -o "demo_data/spine/demo_data_spine.tiff" \
+  "https://github.com/LuoYuhong123/NeuroPilot/releases/download/v0.1.0/demo_data_spine.tiff"
 ```
 
 ## Checksums
 
 ```text
-CellVideo 01-1.tif
+demo_data_24h.tiff
 SHA256 430EADA89B33B68141184A2EEB12AFD0E609FD8D40168248986846CD540D1365
 
-ju2df_5day_freemoving-male1-5day-image-pain 0.tif
+demo_data_spine.tiff
 SHA256 D24E972435413243693549478A775617EC993E88E10D01293BCEF39D5A7D4714
 ```
