@@ -251,12 +251,12 @@ The current demo data layout uses two first-level dataset folders:
 ```text
 demo_data/
   24h/
-    CellVideo 01-1.tif
+    demo_data_24h.tiff
   spine/
-    ju2df_5day_freemoving-male1-5day-image-pain 0.tif
+    demo_data_spine.tiff
 ```
 
-The TIFF payloads are large and are distributed outside normal git history; place them at the paths above before running the demo.
+The TIFF payloads are large and are distributed outside normal git history. Download links and checksums are listed in `demo_data/README.md`; place the files at the paths above before running the demo.
 
 Run it from the repository root:
 
